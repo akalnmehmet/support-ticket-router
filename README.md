@@ -192,7 +192,10 @@ Starts **PostgreSQL**, **Redis**, **FastAPI**, **Celery Worker**, and **CLI** si
 docker compose up --build
 ```
 
-Services will start in dependency order (DB and Redis first, then API and Worker).
+Services will start in dependency order (DB and Redis first, then API and Worker). 
+
+> [!NOTE]
+> The `ticket-router-cli` service is a **run-once job**. It will process the sample tickets, print the results to the logs, and then exit. You can see its output with `docker compose logs ticket-router-cli`.
 
 ---
 
@@ -336,7 +339,7 @@ PostgreSQL data is persisted via a named Docker Volume (`postgres_data`).
 
 | Category | Keywords | Team |
 |---|---|---|
-| `billing` | payment, invoice, refund, money, card, charge, paid, withdrawn | `payments-team` |
+| `billing` | billing, payment, invoice, refund, money, card, charge, paid, withdrawn | `payments-team` |
 | `account` | login, password, account, access, authentication | `account-support` |
 | `technical` | crash, bug, error, broken, loading, upload, not working | `technical-support` |
 | `general` | *(no keyword match)* | `general-support` |
@@ -345,7 +348,7 @@ PostgreSQL data is persisted via a named Docker Volume (`postgres_data`).
 
 | Priority | Conditions |
 |---|---|
-| **High** | Customer type is `premium` **OR** message contains urgency keywords (`urgent`, `asap`, `blocked`, `cannot use`, ...) **OR** billing ticket with financial urgency (`money`, `fraud`, `withdrawn`, ...) |
+| **High** | Customer type is `premium` **OR** message contains urgency keywords (`urgent`, `asap`, `blocked`, `cannot use`, ...) **OR** billing ticket with financial/legal urgency (`money`, `fraud`, `withdrawn`, `lawsuit`, `legal`, ...) |
 | **Medium** | Category is `technical` or `account` |
 | **Low** | All other cases |
 
