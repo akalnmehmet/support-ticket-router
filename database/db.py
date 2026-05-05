@@ -1,37 +1,66 @@
+"""
+Dual-backend database module.
+- If DATABASE_URL environment variable is set (Docker/Production) → PostgreSQL via psycopg2
+- If not set (Streamlit Cloud / local dev) → SQLite via sqlite3 (zero dependencies)
+"""
+
 import os
 import logging
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:secret123@localhost:5432/ticket_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+SQLITE_PATH = "data/rules.db"
 
+# ─── Backend Detection ──────────────────────────────────────────────────────
+
+def _is_postgres() -> bool:
+    return DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")
+
+
+# ─── Connection Factory ─────────────────────────────────────────────────────
 
 def get_connection():
-    """Returns a PostgreSQL connection using DATABASE_URL from environment."""
-    return psycopg2.connect(DATABASE_URL)
+    if _is_postgres():
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        import sqlite3, os
+        os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
+        return sqlite3.connect(SQLITE_PATH)
 
+
+# ─── Placeholder syntax per backend ─────────────────────────────────────────
+
+def _ph() -> str:
+    """Returns the query placeholder: %s for Postgres, ? for SQLite."""
+    return "%s" if _is_postgres() else "?"
+
+
+def _serial() -> str:
+    return "SERIAL" if _is_postgres() else "INTEGER"
+
+
+# ─── Schema & Seeding ────────────────────────────────────────────────────────
 
 def init_db():
     """Initializes the database schema and seeds it with default rules if empty."""
     conn = get_connection()
     cursor = conn.cursor()
+    serial = _serial()
 
-    # Create Categories Table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS categories (
-            id SERIAL PRIMARY KEY,
+            id {serial} PRIMARY KEY,
             name VARCHAR(100) UNIQUE NOT NULL,
             keywords TEXT,
             assigned_team VARCHAR(100) NOT NULL
         )
     ''')
 
-    # Create Priority Rules Table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS priority_rules (
-            id SERIAL PRIMARY KEY,
+            id {serial} PRIMARY KEY,
             rule_type VARCHAR(100) UNIQUE NOT NULL,
             keywords TEXT NOT NULL
         )
@@ -40,6 +69,7 @@ def init_db():
     # Seed if empty
     cursor.execute("SELECT COUNT(*) FROM categories")
     if cursor.fetchone()[0] == 0:
+        ph = _ph()
         initial_categories = [
             ("billing", "refund,invoice,charge,payment,billing,money,paid,card,withdrawn", "payments-team"),
             ("account", "password,login,authentication,account,access", "account-support"),
@@ -47,7 +77,7 @@ def init_db():
             ("general", "", "general-support"),
         ]
         cursor.executemany(
-            "INSERT INTO categories (name, keywords, assigned_team) VALUES (%s, %s, %s)",
+            f"INSERT INTO categories (name, keywords, assigned_team) VALUES ({ph}, {ph}, {ph})",
             initial_categories
         )
 
@@ -56,7 +86,7 @@ def init_db():
             ("billing_urgency", "lawsuit,legal,fraud,scam,money,withdrawn,refund"),
         ]
         cursor.executemany(
-            "INSERT INTO priority_rules (rule_type, keywords) VALUES (%s, %s)",
+            f"INSERT INTO priority_rules (rule_type, keywords) VALUES ({ph}, {ph})",
             initial_priority_rules
         )
         logger.info("Database seeded with default rules.")
@@ -64,11 +94,12 @@ def init_db():
     conn.commit()
     cursor.close()
     conn.close()
-    logger.info("Database initialized successfully.")
+    logger.info(f"Database initialized ({'PostgreSQL' if _is_postgres() else 'SQLite'}).")
 
+
+# ─── Read Operations ─────────────────────────────────────────────────────────
 
 def get_category_rules() -> dict:
-    """Returns a dictionary of category -> list of keywords."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT name, keywords FROM categories WHERE keywords != ''")
@@ -79,7 +110,6 @@ def get_category_rules() -> dict:
 
 
 def get_team_mappings() -> dict:
-    """Returns a dictionary of category -> assigned team."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT name, assigned_team FROM categories")
@@ -90,10 +120,10 @@ def get_team_mappings() -> dict:
 
 
 def get_priority_keywords(rule_type: str) -> list:
-    """Returns a list of keywords for a specific priority rule type."""
+    ph = _ph()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT keywords FROM priority_rules WHERE rule_type = %s", (rule_type,))
+    cursor.execute(f"SELECT keywords FROM priority_rules WHERE rule_type = {ph}", (rule_type,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -102,13 +132,14 @@ def get_priority_keywords(rule_type: str) -> list:
     return []
 
 
-# --- Admin Panel CRUD Operations ---
+# ─── Admin Panel CRUD Operations ─────────────────────────────────────────────
 
 def add_category(name: str, keywords: str, assigned_team: str):
+    ph = _ph()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO categories (name, keywords, assigned_team) VALUES (%s, %s, %s)",
+        f"INSERT INTO categories (name, keywords, assigned_team) VALUES ({ph}, {ph}, {ph})",
         (name.lower(), keywords.lower(), assigned_team)
     )
     conn.commit()
@@ -117,10 +148,11 @@ def add_category(name: str, keywords: str, assigned_team: str):
 
 
 def update_category(old_name: str, new_name: str, keywords: str, assigned_team: str):
+    ph = _ph()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE categories SET name = %s, keywords = %s, assigned_team = %s WHERE name = %s",
+        f"UPDATE categories SET name = {ph}, keywords = {ph}, assigned_team = {ph} WHERE name = {ph}",
         (new_name.lower(), keywords.lower(), assigned_team, old_name.lower())
     )
     conn.commit()
@@ -129,19 +161,21 @@ def update_category(old_name: str, new_name: str, keywords: str, assigned_team: 
 
 
 def delete_category(name: str):
+    ph = _ph()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM categories WHERE name = %s", (name.lower(),))
+    cursor.execute(f"DELETE FROM categories WHERE name = {ph}", (name.lower(),))
     conn.commit()
     cursor.close()
     conn.close()
 
 
 def update_priority_keywords(rule_type: str, keywords: str):
+    ph = _ph()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE priority_rules SET keywords = %s WHERE rule_type = %s",
+        f"UPDATE priority_rules SET keywords = {ph} WHERE rule_type = {ph}",
         (keywords.lower(), rule_type)
     )
     conn.commit()
@@ -150,22 +184,20 @@ def update_priority_keywords(rule_type: str, keywords: str):
 
 
 def get_all_categories_raw() -> list:
-    """Returns raw rows for the admin panel."""
     conn = get_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor = conn.cursor()
     cursor.execute("SELECT id, name, keywords, assigned_team FROM categories")
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
-    return [dict(r) for r in rows]
+    return [{"id": r[0], "name": r[1], "keywords": r[2], "assigned_team": r[3]} for r in rows]
 
 
 def get_all_priority_rules_raw() -> list:
-    """Returns raw rows for the admin panel."""
     conn = get_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor = conn.cursor()
     cursor.execute("SELECT id, rule_type, keywords FROM priority_rules")
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
-    return [dict(r) for r in rows]
+    return [{"id": r[0], "rule_type": r[1], "keywords": r[2]} for r in rows]
