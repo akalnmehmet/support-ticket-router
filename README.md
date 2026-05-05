@@ -2,13 +2,15 @@
 
 An intelligent, rule-based engine that processes customer support tickets and classifies them based on predefined business rules. Built as part of the Software Development Internship assessment at Uruba Software.
 
+**🌐 Live Demo:** [https://support-ticket-router.streamlit.app/](https://support-ticket-router.streamlit.app/)
+
 ## Features
 
 - **Automated Classification**: Automatically routes tickets into `billing`, `account`, `technical`, or `general` categories.
 - **Priority Detection**: Determines ticket priority (`high`, `medium`, `low`) by analyzing customer tiers and semantic urgency keywords.
 - **Dynamic Reasoning**: Generates intelligent, human-readable explanations detailing *why* a specific classification was made.
-- **Interactive UI**: Includes a responsive web interface powered by Streamlit for instant visual testing.
-- **Dockerized**: Fully containerized for a 100% plug-and-play experience.
+- **Live Interactive UI**: A fully hosted responsive web interface powered by Streamlit for instant visual testing.
+- **Dockerized CLI**: Containerized batch processing to test JSON input/output effortlessly.
 - **Test-Driven**: Comprehensive unit tests covering various edge cases and complex scenarios.
 
 ---
@@ -41,31 +43,31 @@ If requirements evolved to handle thousands of rules or multiple languages, I wo
 
 ---
 
-## How to Test and Run the ProjectYou can run this project in different ways depending on your preference.
+## How to Test and Run the Project
 
-### 1. Web UI Mode (Interactive Streamlit App)
-We built a modern, interactive web interface so you can test various keywords, customer types, and edge cases instantly without changing the code.
+You can run this project in different ways depending on your preference.
 
-**Using Docker (Recommended):**
+### 1. Web UI Mode (Live Hosted App)
+You don't need to install anything to test the logic visually. I have deployed the interactive Streamlit application online:
+👉 **[Click here to test the live Support Ticket Router UI](https://support-ticket-router.streamlit.app/)**
+
+### 2. CLI Mode via Docker (Batch Processing)
+To process the raw input data exactly as requested in the assignment (`data/tickets.json` -> console/JSON output) without installing Python locally:
+
 1. Ensure Docker Desktop is running.
-2. Run `docker compose up --build` in your terminal.
-3. Open your browser and navigate to **`http://localhost:8501`**
-
-**Using Python Locally (Without Docker):**
-1. Install dependencies: `pip install streamlit`
-2. Run the app: `streamlit run app.py`
-
-### 2. CLI Mode (Batch Processing via `main.py`)
-If you prefer to process the raw input data exactly as requested in the assignment (reading from `data/tickets.json` and outputting a JSON array):
-
-1. Ensure you have Python installed.
-2. Run the main script in the terminal:
+2. Run the following command in your terminal:
    ```bash
-   python main.py
+   docker compose up --build
    ```
-*This will parse the JSON, process the logic, print the formatted output to the console, and save the results into `data/processed_tickets.json`.*
+*Docker will parse the JSON, process the logic, print the formatted output to the console, and securely map the results to `data/processed_tickets.json` on your local machine.*
 
-### 3. Running the Unit Tests
+### 3. CLI Mode via Local Python
+If you prefer to run the CLI processor directly with your local Python installation:
+```bash
+python main.py
+```
+
+### 4. Running the Unit Tests
 To mathematically verify all edge cases, priority rules, and categorical mappings:
 ```bash
 python -m unittest tests/test_evaluator.py
