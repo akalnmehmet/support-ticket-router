@@ -36,9 +36,11 @@ services:
 
   # ─── 3. FastAPI REST API ──────────────────────────────────────────────────
   ticket-router-api:
-    build: .
+    build:
+      context: .
+      target: api
     container_name: ticket-router-api
-    command: uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
     env_file:
       - .env
     ports:
@@ -53,7 +55,9 @@ services:
 
   # ─── 4. Celery Background Worker ─────────────────────────────────────────
   celery-worker:
-    build: .
+    build:
+      context: .
+      target: api
     container_name: ticket-router-worker
     command: celery -A worker.celery_app worker --loglevel=info
     env_file:
@@ -68,8 +72,11 @@ services:
 
   # ─── 5. CLI Batch Processor ───────────────────────────────────────────────
   ticket-router-cli:
-    build: .
+    build:
+      context: .
+      target: cli
     container_name: ticket-router-cli
+    command: python main.py
     env_file:
       - .env
     volumes:
