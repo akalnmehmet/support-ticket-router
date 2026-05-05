@@ -1,13 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from contextlib import asynccontextmanager
+from typing import Optional
 
-from models.ticket import Ticket as InternalTicket
-from engine.evaluator import TicketEvaluator
-from engine.router import TeamRouter
-from database.db import init_db, get_category_rules, get_team_mappings, get_priority_keywords
+from worker import process_ticket_task, celery_app
+from database.db import init_db
 
-# Pydantic Models for API (camelCase support for JSON Request/Response)
+# Pydantic Models for API
 class ApiTicketRequest(BaseModel):
     id: int
     subject: str = ""
@@ -15,74 +13,46 @@ class ApiTicketRequest(BaseModel):
     customerType: str = Field(default="standard")
     createdAt: str = ""
 
-class ApiTicketResponse(BaseModel):
-    id: int
-    category: str
-    priority: str
-    assignedTeam: str
-    reason: str
-
-# State dictionary to hold our engine singletons
-engine_state = {}
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # --- Startup ---
-    # Initialize DB and load rules into memory for fast processing
-    init_db()
-    category_rules = get_category_rules()
-    team_mapping = get_team_mappings()
-    urgency_keywords = get_priority_keywords("urgency")
-    billing_urgency_keywords = get_priority_keywords("billing_urgency")
-
-    # Instantiate the engines
-    engine_state["evaluator"] = TicketEvaluator(category_rules, urgency_keywords, billing_urgency_keywords)
-    engine_state["router"] = TeamRouter(team_mapping)
-    
-    yield # App is running
-    
-    # --- Shutdown ---
-    engine_state.clear()
+class TaskResponse(BaseModel):
+    task_id: str
+    status: str
+    result: Optional[dict] = None
 
 app = FastAPI(
-    title="Support Ticket Router API",
-    description="An intelligent engine to categorize, prioritize, and route customer support tickets automatically.",
-    version="1.0.0",
-    lifespan=lifespan
+    title="Support Ticket Router API (Async)",
+    description="Asynchronous engine to categorize, prioritize, and route customer support tickets using Celery & Redis.",
+    version="2.0.0"
 )
 
-@app.post("/api/v1/process-ticket", response_model=ApiTicketResponse)
+@app.on_event("startup")
+async def startup_event():
+    # Ensure database schema exists before taking requests
+    init_db()
+
+@app.post("/api/v1/process-ticket", response_model=TaskResponse)
 async def process_ticket(ticket_req: ApiTicketRequest):
-    evaluator = engine_state.get("evaluator")
-    router = engine_state.get("router")
-    
-    if not evaluator or not router:
-        raise HTTPException(status_code=500, detail="Engine not initialized.")
-
+    """Submits a ticket to the Redis message queue for asynchronous processing."""
     try:
-        # Convert incoming API Request to Internal Domain Model
-        internal_ticket = InternalTicket(
-            id=ticket_req.id,
-            subject=ticket_req.subject,
-            message=ticket_req.message,
-            customer_type=ticket_req.customerType,
-            created_at=ticket_req.createdAt
+        # Enqueue the task
+        # .dict() handles camelCase keys via alias or as defined
+        task = process_ticket_task.delay(ticket_req.model_dump())
+        
+        return TaskResponse(
+            task_id=task.id,
+            status="PENDING"
         )
-
-        # Execute Business Logic
-        category = evaluator.evaluate_category(internal_ticket)
-        priority = evaluator.evaluate_priority(internal_ticket, category)
-        team = router.route_ticket(category)
-        reason = evaluator.generate_reason(internal_ticket, category, priority)
-
-        # Construct and return standard API Response
-        return ApiTicketResponse(
-            id=internal_ticket.id,
-            category=category,
-            priority=priority,
-            assignedTeam=team,
-            reason=reason
-        )
-
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing ticket: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {str(e)}")
+
+@app.get("/api/v1/task/{task_id}", response_model=TaskResponse)
+async def get_task_status(task_id: str):
+    """Retrieves the status and result of an asynchronously processed ticket."""
+    task = celery_app.AsyncResult(task_id)
+    
+    response = {
+        "task_id": task_id,
+        "status": task.status,
+        "result": task.result if task.ready() else None
+    }
+    
+    return TaskResponse(**response)

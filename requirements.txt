@@ -2,3 +2,7 @@ streamlit
 pytest
 fastapi
 uvicorn
+celery
+redis
+requests
+psycopg2-binary
