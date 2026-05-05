@@ -41,9 +41,9 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM categories")
     if cursor.fetchone()[0] == 0:
         initial_categories = [
-            ("billing", "refund,invoice,charge,payment,billing", "payments-team"),
-            ("account", "password,login,authentication,account,access", "auth-team"),
-            ("technical", "crash,bug,error,broken,loading", "technical-support"),
+            ("billing", "refund,invoice,charge,payment,billing,money,paid,card,withdrawn", "payments-team"),
+            ("account", "password,login,authentication,account,access", "account-support"),
+            ("technical", "crash,bug,error,broken,loading,upload,not working", "technical-support"),
             ("general", "", "general-support"),
         ]
         cursor.executemany(
@@ -52,8 +52,8 @@ def init_db():
         )
 
         initial_priority_rules = [
-            ("urgency", "urgent,asap,emergency,immediately,blocked"),
-            ("billing_urgency", "lawsuit,legal,fraud,scam"),
+            ("urgency", "urgent,asap,emergency,immediately,blocked,cannot use"),
+            ("billing_urgency", "lawsuit,legal,fraud,scam,money,withdrawn,refund"),
         ]
         cursor.executemany(
             "INSERT INTO priority_rules (rule_type, keywords) VALUES (%s, %s)",

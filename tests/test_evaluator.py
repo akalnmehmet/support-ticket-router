@@ -7,12 +7,12 @@ class TestTicketEvaluator(unittest.TestCase):
     def setUp(self):
         """Initialize the TicketEvaluator with mock rules before each test."""
         category_rules = {
-            "billing": ["refund", "invoice", "charge", "payment", "billing"],
+            "billing": ["refund", "invoice", "charge", "payment", "billing", "money", "paid", "card", "withdrawn"],
             "account": ["password", "login", "authentication", "account", "access"],
-            "technical": ["crash", "bug", "error", "broken", "loading"],
+            "technical": ["crash", "bug", "error", "broken", "loading", "upload", "not working"],
         }
-        urgency_keywords = ["urgent", "asap", "emergency", "immediately", "blocked"]
-        billing_urgency_keywords = ["lawsuit", "legal", "fraud", "scam"]
+        urgency_keywords = ["urgent", "asap", "emergency", "immediately", "blocked", "cannot use"]
+        billing_urgency_keywords = ["lawsuit", "legal", "fraud", "scam", "money", "withdrawn", "refund"]
         self.evaluator = TicketEvaluator(category_rules, urgency_keywords, billing_urgency_keywords)
 
     def create_ticket(self, subject="", message="", customer_type="standard"):
