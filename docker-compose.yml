@@ -1,10 +1,9 @@
 version: '3.8'
 
 services:
-  ticket-router-ui:
+  ticket-router:
     build: .
-    container_name: ticket-router-ui
-    ports:
-      - "8501:8501"
+    container_name: ticket-router
     volumes:
+      # Bind mount the data directory so generated processed_tickets.json is accessible on host
       - ./data:/app/data

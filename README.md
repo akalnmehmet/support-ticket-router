@@ -45,7 +45,13 @@ If requirements evolved to handle thousands of rules or multiple languages, I wo
 
 ## How to Test and Run the Project
 
-You can run this project in different ways depending on your preference.
+First, clone the repository to your local machine:
+```bash
+git clone https://github.com/akalnmehmet/support-ticket-router.git
+cd support-ticket-router
+```
+
+You can then run and test this project in different ways depending on your preference.
 
 ### 1. Web UI Mode (Live Hosted App)
 You don't need to install anything to test the logic visually. I have deployed the interactive Streamlit application online:

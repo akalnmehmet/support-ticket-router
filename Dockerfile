@@ -5,11 +5,11 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Copy requirements (needed for Streamlit UI but kept for completeness)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /app
 
-EXPOSE 8501
-
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Run the CLI batch processor by default instead of the UI
+CMD ["python", "main.py"]
