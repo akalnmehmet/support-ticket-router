@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "subject": "Payment failed",
+    "message": "My payment failed but money was withdrawn from my card.",
+    "customerType": "premium",
+    "createdAt": "2026-04-29T10:00:00Z"
+  },
+  {
+    "id": 2,
+    "subject": "Cannot login",
+    "message": "I forgot my password and cannot access my account.",
+    "customerType": "standard",
+    "createdAt": "2026-04-29T10:05:00Z"
+  },
+  {
+    "id": 3,
+    "subject": "App crashes",
+    "message": "The mobile app crashes when I upload a photo.",
+    "customerType": "standard",
+    "createdAt": "2026-04-29T10:10:00Z"
+  },
+  {
+    "id": 4,
+    "subject": "Refund request",
+    "message": "I want a refund for my last invoice.",
+    "customerType": "premium",
+    "createdAt": "2026-04-29T10:15:00Z"
+  }
+]

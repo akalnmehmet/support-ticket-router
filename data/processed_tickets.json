@@ -1,0 +1,23 @@
+[
+    {
+        "id": 1,
+        "category": "account",
+        "priority": "medium",
+        "assigned_team": "account-support",
+        "reason": "Classified as account with medium priority."
+    },
+    {
+        "id": 2,
+        "category": "billing",
+        "priority": "high",
+        "assigned_team": "payments-team",
+        "reason": "Classified as billing and marked high priority because customer is premium and ticket contains urgency keywords and billing ticket contains financial urgency keywords."
+    },
+    {
+        "id": 3,
+        "category": "general",
+        "priority": "low",
+        "assigned_team": "general-support",
+        "reason": "Classified as general with low priority."
+    }
+]

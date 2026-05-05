@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  ticket-router-ui:
+    build: .
+    container_name: ticket-router-ui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
