@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from worker import process_ticket_task, celery_app
 from database.db import init_db
+# All env vars now sourced from config.settings (via database.db and worker modules)
 
 # Pydantic Models for API
 class ApiTicketRequest(BaseModel):

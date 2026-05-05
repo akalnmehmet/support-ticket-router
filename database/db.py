@@ -6,11 +6,9 @@ Dual-backend database module.
 
 import os
 import logging
+from config.settings import DATABASE_URL, SQLITE_PATH
 
 logger = logging.getLogger(__name__)
-
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-SQLITE_PATH = "data/rules.db"
 
 # ─── Backend Detection ──────────────────────────────────────────────────────
 
@@ -90,6 +88,22 @@ def init_db():
             initial_priority_rules
         )
         logger.info("Database seeded with default rules.")
+
+    # Create Processed Tickets history table
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS processed_tickets (
+            id {serial} PRIMARY KEY,
+            ticket_id INTEGER,
+            subject TEXT,
+            message TEXT,
+            customer_type TEXT,
+            category TEXT,
+            priority TEXT,
+            assigned_team TEXT,
+            reason TEXT,
+            processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
 
     conn.commit()
     cursor.close()
@@ -201,3 +215,52 @@ def get_all_priority_rules_raw() -> list:
     cursor.close()
     conn.close()
     return [{"id": r[0], "rule_type": r[1], "keywords": r[2]} for r in rows]
+
+
+# ─── Processed Ticket History ─────────────────────────────────────────────────
+
+def save_processed_ticket(ticket_data: dict, result: dict):
+    """Persists a classified ticket to the processed_tickets history table."""
+    ph = _ph()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""INSERT INTO processed_tickets
+            (ticket_id, subject, message, customer_type, category, priority, assigned_team, reason)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})""",
+        (
+            ticket_data.get("id"),
+            ticket_data.get("subject", ""),
+            ticket_data.get("message", ""),
+            ticket_data.get("customerType", "standard"),
+            result.get("category"),
+            result.get("priority"),
+            result.get("assignedTeam"),
+            result.get("reason"),
+        )
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_recent_processed_tickets(limit: int = 50) -> list:
+    """Returns the most recently processed tickets for the UI history view."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT ticket_id, subject, customer_type, category, priority, assigned_team, reason, processed_at "
+        "FROM processed_tickets ORDER BY processed_at DESC LIMIT ?".replace("?", _ph()),
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [
+        {
+            "id": r[0], "subject": r[1], "customer_type": r[2],
+            "category": r[3], "priority": r[4], "team": r[5],
+            "reason": r[6], "timestamp": str(r[7])
+        }
+        for r in rows
+    ]

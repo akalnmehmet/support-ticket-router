@@ -9,10 +9,10 @@ from engine.router import TeamRouter
 from database.db import (
     init_db, get_category_rules, get_team_mappings, get_priority_keywords,
     get_all_categories_raw, get_all_priority_rules_raw,
-    add_category, update_category, delete_category, update_priority_keywords
+    add_category, update_category, delete_category, update_priority_keywords,
+    get_recent_processed_tickets
 )
-
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+from config.settings import ADMIN_PASSWORD
 
 @st.cache_resource
 def setup_database():
@@ -28,9 +28,12 @@ def render_dashboard(rules):
     st.title("Support Ticket Classification Engine")
     st.write("An intelligent, rule-based engine to categorize, prioritize, and route customer support tickets automatically.")
 
-    # Initialize session state for storing ticket history
+    # Load ticket history from DB (persists across page reloads)
     if "ticket_history" not in st.session_state:
-        st.session_state.ticket_history = []
+        try:
+            st.session_state.ticket_history = get_recent_processed_tickets(50)
+        except Exception:
+            st.session_state.ticket_history = []
 
     # Input Section
     with st.form("ticket_form", clear_on_submit=True):
@@ -69,8 +72,7 @@ def render_dashboard(rules):
                 team = router.route_ticket(category)
                 reason = evaluator.generate_reason(ticket, category, priority)
 
-            # Add to history (newest first)
-            st.session_state.ticket_history.insert(0, {
+            result = {
                 "id": ticket_id,
                 "subject": subject,
                 "customer_type": customer_type,
@@ -79,7 +81,20 @@ def render_dashboard(rules):
                 "team": team,
                 "reason": reason,
                 "timestamp": current_time
-            })
+            }
+
+            # Persist to DB and prepend to session (newest first)
+            try:
+                from database.db import save_processed_ticket
+                save_processed_ticket(
+                    {"id": ticket_id, "subject": subject, "message": message,
+                     "customerType": customer_type},
+                    {"category": category, "priority": priority,
+                     "assignedTeam": team, "reason": reason}
+                )
+            except Exception:
+                pass  # DB write failure should not crash the UI
+            st.session_state.ticket_history.insert(0, result)
 
     # Display Results History
     if st.session_state.ticket_history:
