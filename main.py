@@ -1,25 +1,35 @@
 import json
 import os
+import logging
 
 from models.ticket import Ticket, ProcessedTicket
 from engine.evaluator import TicketEvaluator
 from engine.router import TeamRouter
 
-def main():
-    input_file_path = "data/tickets.json"
-    output_file_path = "data/processed_tickets.json"
+# Setup Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+def main(input_file_path="data/tickets.json", output_file_path="data/processed_tickets.json"):
 
     raw_tickets = []
     if os.path.exists(input_file_path):
         try:
-            with open(input_file_path, 'r') as f:
+            with open(input_file_path, 'r', encoding="utf-8") as f:
                 raw_tickets = json.load(f)
-            print(f"Loaded {len(raw_tickets)} tickets from {input_file_path}")
+            logger.info(f"Loaded {len(raw_tickets)} tickets from {input_file_path}")
         except Exception as e:
-            print(f"Error reading {input_file_path}: {e}")
+            logger.error(f"Error reading {input_file_path}: {e}")
             return
     else:
-        print(f"Error: '{input_file_path}' not found.")
+        logger.error(f"Error: '{input_file_path}' not found.")
         return
 
     evaluator = TicketEvaluator()
@@ -62,9 +72,9 @@ def main():
             })
             
         except Exception as e:
-            print(f"Skipping invalid ticket data: {t_data} (Error: {e})")
+            logger.warning(f"Skipping invalid ticket data: {t_data} (Error: {e})")
 
-    # Print to console
+    # Print to console normally for CLI pipeline processing
     json_output = json.dumps(output_data, indent=2)
     print("\n--- Processed Tickets ---")
     print(json_output)
@@ -72,11 +82,11 @@ def main():
     # Write output to file
     try:
         os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-        with open(output_file_path, 'w') as f:
+        with open(output_file_path, 'w', encoding="utf-8") as f:
             json.dump(output_data, f, indent=2)
-        print(f"\nSuccessfully saved processed tickets to {output_file_path}")
+        logger.info(f"Successfully saved processed tickets to {output_file_path}")
     except Exception as e:
-        print(f"\nFailed to save output to {output_file_path}: {e}")
+        logger.error(f"Failed to save output to {output_file_path}: {e}")
 
 if __name__ == "__main__":
     main()

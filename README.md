@@ -11,7 +11,9 @@ An intelligent, rule-based engine that processes customer support tickets and cl
 - **Dynamic Reasoning**: Generates intelligent, human-readable explanations detailing *why* a specific classification was made.
 - **Live Interactive UI**: A fully hosted responsive web interface powered by Streamlit for instant visual testing.
 - **Dockerized CLI**: Containerized batch processing to test JSON input/output effortlessly.
-- **Test-Driven**: Comprehensive unit tests covering various edge cases and complex scenarios.
+- **Advanced Text Matching**: Uses Regular Expressions (RegEx) with word boundaries (`\b`) to eliminate false-positive substring matches.
+- **Production-Ready Logging**: Tracks system health and execution via Python's standard `logging` module outputting to `app.log`.
+- **Test-Driven**: Comprehensive Unit and End-to-End (E2E) test suites using `pytest` to guarantee flawless execution pipelines.
 
 ---
 
