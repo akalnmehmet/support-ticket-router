@@ -12,6 +12,8 @@ from database.db import (
     add_category, update_category, delete_category, update_priority_keywords
 )
 
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
 @st.cache_resource
 def setup_database():
     init_db()
@@ -102,7 +104,7 @@ def render_admin_login():
     
     password = st.text_input("Password", type="password")
     if st.button("Login"):
-        if password == "admin123":
+        if password == ADMIN_PASSWORD:
             st.session_state.is_admin = True
             st.rerun()
         else:

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from worker import process_ticket_task, celery_app
 from database.db import init_db
@@ -18,16 +19,20 @@ class TaskResponse(BaseModel):
     status: str
     result: Optional[dict] = None
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: ensure DB schema exists before accepting requests
+    init_db()
+    yield
+    # Shutdown: nothing to clean up for now
+
 app = FastAPI(
     title="Support Ticket Router API (Async)",
     description="Asynchronous engine to categorize, prioritize, and route customer support tickets using Celery & Redis.",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
-
-@app.on_event("startup")
-async def startup_event():
-    # Ensure database schema exists before taking requests
-    init_db()
 
 @app.post("/api/v1/process-ticket", response_model=TaskResponse)
 async def process_ticket(ticket_req: ApiTicketRequest):

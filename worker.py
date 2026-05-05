@@ -17,33 +17,28 @@ celery_app = Celery(
     backend=REDIS_URL
 )
 
-# Global engine instances for the worker processes
-evaluator = None
-router = None
+import threading
 
-@worker_process_init.connect
-def init_worker(**kwargs):
-    """Initialize DB and load rules into memory when a worker process starts."""
-    global evaluator, router
-    init_db()
-    category_rules = get_category_rules()
-    team_mapping = get_team_mappings()
-    urgency_keywords = get_priority_keywords("urgency")
-    billing_urgency_keywords = get_priority_keywords("billing_urgency")
+# Thread-local storage for engine instances (safe for Celery concurrent workers)
+_thread_local = threading.local()
 
-    evaluator = TicketEvaluator(category_rules, urgency_keywords, billing_urgency_keywords)
-    router = TeamRouter(team_mapping)
+def _get_engines():
+    """Lazily initializes and caches engine instances per worker thread."""
+    if not getattr(_thread_local, 'initialized', False):
+        init_db()
+        category_rules = get_category_rules()
+        team_mapping = get_team_mappings()
+        urgency_keywords = get_priority_keywords("urgency")
+        billing_urgency_keywords = get_priority_keywords("billing_urgency")
+        _thread_local.evaluator = TicketEvaluator(category_rules, urgency_keywords, billing_urgency_keywords)
+        _thread_local.router = TeamRouter(team_mapping)
+        _thread_local.initialized = True
+    return _thread_local.evaluator, _thread_local.router
 
 @celery_app.task(name="process_ticket")
 def process_ticket_task(ticket_data: dict) -> dict:
     """The background task that processes a single ticket."""
-    global evaluator, router
-    
-    # Fallback initialization (useful for tests or if signal doesn't fire)
-    if evaluator is None or router is None:
-        init_db()
-        evaluator = TicketEvaluator(get_category_rules(), get_priority_keywords("urgency"), get_priority_keywords("billing_urgency"))
-        router = TeamRouter(get_team_mappings())
+    evaluator, router = _get_engines()
 
     # Map raw dictionary to our strictly typed InternalTicket dataclass
     internal_ticket = InternalTicket(
