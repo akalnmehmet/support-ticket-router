@@ -5,6 +5,7 @@ import logging
 from models.ticket import Ticket, ProcessedTicket
 from engine.evaluator import TicketEvaluator
 from engine.router import TeamRouter
+from database.db import init_db, get_category_rules, get_team_mappings, get_priority_keywords
 
 # Setup Logging
 logging.basicConfig(
@@ -32,8 +33,15 @@ def main(input_file_path="data/tickets.json", output_file_path="data/processed_t
         logger.error(f"Error: '{input_file_path}' not found.")
         return
 
-    evaluator = TicketEvaluator()
-    router = TeamRouter()
+    # Initialize DB and Load Rules
+    init_db()
+    category_rules = get_category_rules()
+    team_mapping = get_team_mappings()
+    urgency_keywords = get_priority_keywords("urgency")
+    billing_urgency_keywords = get_priority_keywords("billing_urgency")
+
+    evaluator = TicketEvaluator(category_rules, urgency_keywords, billing_urgency_keywords)
+    router = TeamRouter(team_mapping)
     output_data = []
 
     for t_data in raw_tickets:

@@ -1,2 +1,4 @@
 streamlit
 pytest
+fastapi
+uvicorn

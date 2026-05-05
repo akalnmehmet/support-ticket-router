@@ -1,18 +1,13 @@
-from config.rules import TEAM_ROUTING_RULES
-
 class TeamRouter:
-    """
-    Handles the routing logic to assign support tickets to the appropriate team.
-    """
-    
+    def __init__(self, team_mapping: dict):
+        """Initialize the router with team mappings loaded from the database."""
+        self.team_mapping = team_mapping
+
     def route_ticket(self, category: str) -> str:
         """
-        Determines the appropriate support team based on the ticket category.
-        
-        Args:
-            category (str): The categorized issue type of the ticket.
-            
-        Returns:
-            str: The name of the assigned team to handle the ticket. Defaults to 'general-support'.
+        Maps a given category to the corresponding support team.
+        Returns 'general-support' as a fallback if the category is not found.
         """
-        return TEAM_ROUTING_RULES.get(category, "general-support")
+        # Ensure input is lowercase and handle None safely
+        category = (category or "").lower()
+        return self.team_mapping.get(category, "general-support")

@@ -11,12 +11,15 @@ def temp_env():
     with tempfile.TemporaryDirectory() as temp_dir:
         input_path = os.path.join(temp_dir, "test_input.json")
         output_path = os.path.join(temp_dir, "test_output.json")
-        yield input_path, output_path
+        db_path = os.path.join(temp_dir, "test_rules.db")
+        yield input_path, output_path, db_path
 
 def test_full_pipeline(temp_env, capsys, caplog):
     import logging
     caplog.set_level(logging.INFO)
-    input_path, output_path = temp_env
+    input_path, output_path, db_path = temp_env
+    
+    from unittest.mock import patch
     
     # 1. Prepare Mock Input Data
     mock_input = [
@@ -39,8 +42,9 @@ def test_full_pipeline(temp_env, capsys, caplog):
     with open(input_path, 'w') as f:
         json.dump(mock_input, f)
         
-    # 2. Run the pipeline
-    main(input_file_path=input_path, output_file_path=output_path)
+    # 2. Run the pipeline with patched DB_PATH
+    with patch('database.db.DB_PATH', db_path):
+        main(input_file_path=input_path, output_file_path=output_path)
     
     # 3. Assertions on Output File
     assert os.path.exists(output_path), "Output file was not created"

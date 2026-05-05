@@ -5,8 +5,15 @@ from engine.evaluator import TicketEvaluator
 
 class TestTicketEvaluator(unittest.TestCase):
     def setUp(self):
-        """Initialize the TicketEvaluator before each test."""
-        self.evaluator = TicketEvaluator()
+        """Initialize the TicketEvaluator with mock rules before each test."""
+        category_rules = {
+            "billing": ["refund", "invoice", "charge", "payment", "billing"],
+            "account": ["password", "login", "authentication", "account", "access"],
+            "technical": ["crash", "bug", "error", "broken", "loading"],
+        }
+        urgency_keywords = ["urgent", "asap", "emergency", "immediately", "blocked"]
+        billing_urgency_keywords = ["lawsuit", "legal", "fraud", "scam"]
+        self.evaluator = TicketEvaluator(category_rules, urgency_keywords, billing_urgency_keywords)
 
     def create_ticket(self, subject="", message="", customer_type="standard"):
         """Helper method to easily construct a Ticket for testing."""
