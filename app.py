@@ -1,4 +1,5 @@
 import streamlit as st
+import os
 import datetime
 import random
 import pandas as pd
@@ -23,6 +24,12 @@ def setup_database():
         "urgency_keywords": get_priority_keywords("urgency"),
         "billing_urgency_keywords": get_priority_keywords("billing_urgency")
     }
+
+def load_css():
+    css_path = os.path.join(os.path.dirname(__file__), "assets", "styles.css")
+    if os.path.exists(css_path):
+        with open(css_path, "r", encoding="utf-8") as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 def render_dashboard(rules):
     st.title("Support Ticket Classification Engine")
@@ -189,6 +196,7 @@ def render_admin_panel():
 
 def main():
     st.set_page_config(page_title="Ticket Classification", page_icon="🚀", layout="wide")
+    load_css()
     
     # Initialize session state for auth
     if "is_admin" not in st.session_state:

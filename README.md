@@ -138,6 +138,12 @@ support-ticket-router/
 ├── data/
 │   └── tickets.json          # Sample input (assessment data)
 │
+├── assets/
+│   └── styles.css            # 🎨 Custom CSS — premium dark-mode UI theme
+│
+├── .streamlit/
+│   └── config.toml           # Streamlit theme config (dark mode, brand colors)
+│
 ├── docker-compose.yml        # 5-service orchestration
 ├── Dockerfile                # Multi-stage build
 ├── requirements.txt
@@ -265,7 +271,7 @@ Enqueues a ticket for async classification. Returns a `task_id` immediately.
 }
 ```
 
-**Response `202`:**
+**Response `200`:**
 ```json
 {
   "task_id": "8b52df3e-7a45-4d2f-9c11-abc123def456",
@@ -404,4 +410,5 @@ The system is already scaled through 5 development phases. The next step would b
 | Phase 4 | ✅ | FastAPI REST API, Celery + Redis async queues |
 | Phase 5 | ✅ | Discord Webhooks, Docker Compose (5 services), multi-stage builds |
 | Phase 6 | ✅ | Central config, rate limiting, ticket history persistence, 26 tests |
-| Phase 7 | 🔜 | NLP/AI intent classification (HuggingFace / OpenAI) |
+| Phase 7 | ✅ | Premium UI modernization (dark mode, glassmorphism, particle animations) |
+| Phase 8 | 🔜 | NLP/AI intent classification (HuggingFace / OpenAI) |
