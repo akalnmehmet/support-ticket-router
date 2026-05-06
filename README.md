@@ -4,6 +4,8 @@
 
 Built as part of the **Software Development Internship** technical assessment at **Uruba Software**.
 
+**Assessment scope:** the core submission is the CLI + rule engine (`python main.py`). FastAPI, Celery, Redis, PostgreSQL, Streamlit, Docker, and webhooks are optional extensions added to show how the same core logic can evolve into a more production-like service.
+
 **🌐 Live Demo:** [https://support-ticket-router.streamlit.app/](https://support-ticket-router.streamlit.app/)
 
 ---
@@ -17,8 +19,8 @@ Built as part of the **Software Development Internship** technical assessment at
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Configuration (.env)](#configuration-env)
-  - [Run with Docker (Recommended)](#run-with-docker-recommended)
   - [Run Locally (CLI)](#run-locally-cli)
+  - [Run with Docker (Full Stack)](#run-with-docker-full-stack)
   - [Run Streamlit UI](#run-streamlit-ui)
   - [Run Tests](#run-tests)
 - [REST API Reference](#rest-api-reference)
@@ -33,19 +35,19 @@ Built as part of the **Software Development Internship** technical assessment at
 
 | Feature | Details |
 |---|---|
-| 🤖 **Automated Classification** | Categorizes tickets into `billing`, `account`, `technical`, or `general` |
+| 🤖 **Scored Classification** | Categorizes tickets into `billing`, `account`, `technical`, or `general` using weighted keyword scoring |
 | 🔥 **Priority Detection** | Assigns `high`, `medium`, or `low` based on customer tier and urgency keywords |
-| 💬 **Dynamic Reasoning** | Generates human-readable explanations for every classification decision |
+| 💬 **Dynamic Reasoning** | Explains primary category keywords, secondary category signals, and priority decisions |
 | 🌐 **REST API (FastAPI)** | Async HTTP API with Swagger UI, Pydantic validation and rate limiting |
 | 📬 **Message Queues** | Celery + Redis for non-blocking asynchronous ticket processing |
 | 🔔 **Webhook Notifications** | Sends rich Discord/Slack embeds when a ticket is assigned to a team |
 | 🗄️ **Dual-Backend DB** | PostgreSQL in Docker/production; SQLite fallback for local/Streamlit Cloud |
 | 🔒 **Secure Admin Panel** | Password-protected Streamlit dashboard for live rule management — no code changes needed |
 | 📊 **Persistent History** | Processed tickets are stored in DB and survive page reloads |
-| 🧠 **RegEx Matching** | Word-boundary (`\b`) patterns prevent false-positive substring hits |
+| 🧠 **RegEx Matching + Tie-Breaking** | Word-boundary (`\b`) patterns prevent false positives; score ties resolve deterministically |
 | 🚦 **Rate Limiting** | `slowapi` protects the API endpoints (30 req/min for POST, 120/min for GET) |
 | 📋 **Structured Logging** | Python `logging` module writes to `app.log` with timestamps |
-| ✅ **26 Automated Tests** | Unit + E2E test suites covering edge cases, case tickets, and output format |
+| ✅ **42 Automated Tests** | Unit + E2E test suites covering scoring, edge cases, case tickets, and output format |
 | 🐳 **Multi-Stage Docker** | Optimized container builds; each service carries only what it needs |
 
 ---
@@ -102,7 +104,7 @@ Built as part of the **Software Development Internship** technical assessment at
 | **Config** | `config/settings.py` + `.env` |
 | **Rate Limiting** | slowapi |
 | **Notifications** | Discord/Slack Webhooks via `requests` |
-| **Testing** | pytest (26 tests: Unit + E2E) |
+| **Testing** | pytest (42 tests: Unit + E2E) |
 | **Containerization** | Docker + Docker Compose (5 services) |
 
 ---
@@ -124,7 +126,7 @@ support-ticket-router/
 │   └── db.py                 # Dual-backend DB (PostgreSQL + SQLite fallback)
 │
 ├── engine/
-│   ├── evaluator.py          # Classification engine (RegEx word-boundary matching)
+│   ├── evaluator.py          # Scored classification engine (RegEx + tie-break rules)
 │   ├── router.py             # Team routing engine
 │   └── notifier.py           # Discord/Slack webhook dispatcher
 │
@@ -132,7 +134,7 @@ support-ticket-router/
 │   └── ticket.py             # Typed dataclasses (Ticket, ProcessedTicket)
 │
 ├── tests/
-│   ├── test_evaluator.py     # 11 unit tests
+│   ├── test_evaluator.py     # 27 unit tests
 │   └── test_e2e.py           # 15 E2E pipeline tests (3 test classes)
 │
 ├── data/
@@ -190,21 +192,6 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 ---
 
-### Run with Docker (Recommended)
-
-Starts **PostgreSQL**, **Redis**, **FastAPI**, **Celery Worker**, and **CLI** simultaneously:
-
-```bash
-docker compose up --build
-```
-
-Services will start in dependency order (DB and Redis first, then API and Worker). 
-
-> [!NOTE]
-> The `ticket-router-cli` service is a **run-once job**. It will process the sample tickets, print the results to the logs, and then exit. You can see its output with `docker compose logs ticket-router-cli`.
-
----
-
 ### Run Locally (CLI)
 
 The core assessment deliverable — processes `data/tickets.json` and outputs results:
@@ -215,6 +202,21 @@ python main.py
 ```
 
 Output is printed to console and saved to `data/processed_tickets.json`.
+
+---
+
+### Run with Docker (Full Stack)
+
+Optional full-stack run. Starts **PostgreSQL**, **Redis**, **FastAPI**, **Celery Worker**, and **CLI** simultaneously:
+
+```bash
+docker compose up --build
+```
+
+Services will start in dependency order (DB and Redis first, then API and Worker). 
+
+> [!NOTE]
+> The `ticket-router-cli` service is a **run-once job**. It will process the sample tickets, print the results to the logs, and then exit. You can see its output with `docker compose logs ticket-router-cli`.
 
 ---
 
@@ -239,11 +241,11 @@ Or visit the live hosted version: 👉 **[https://support-ticket-router.streamli
 pytest tests/ -v
 ```
 
-**Expected output:** `26 passed`
+**Expected output:** `42 passed`
 
 | Test Suite | Count | Coverage |
 |---|---|---|
-| `test_evaluator.py` | 11 | Category classification, priority rules, edge cases |
+| `test_evaluator.py` | 27 | Category scoring, tie-breaks, detail analysis, reason generation, priority rules, edge cases |
 | `test_e2e.py` | 15 | All 4 case tickets, empty list, None fields, malformed data, output format |
 
 ---
@@ -307,7 +309,7 @@ Polls the status and result of a previously submitted ticket.
     "category": "billing",
     "priority": "high",
     "assignedTeam": "payments-team",
-    "reason": "Classified as billing and marked high priority because customer is premium and billing ticket contains financial urgency keywords."
+    "reason": "Classified as billing because refund and payment matched strongest. Marked high priority because customer is premium and billing ticket contains financial urgency keywords."
   }
 }
 ```
@@ -350,11 +352,43 @@ PostgreSQL data is persisted via a named Docker Volume (`postgres_data`).
 | `technical` | crash, bug, error, broken, loading, upload, not working | `technical-support` |
 | `general` | *(no keyword match)* | `general-support` |
 
+### Category Scoring
+
+When a ticket contains signals from multiple categories, the engine does **not** simply return the first matching rule. `TicketEvaluator` scores every category and chooses the strongest primary category.
+
+| Match Location | Score |
+|---|---:|
+| Keyword match in `subject` | `+2` |
+| Keyword match in `message` | `+1` |
+
+Scores are cumulative. For example:
+
+```text
+Subject: Payment card issue
+Message: I need a refund and cannot login.
+```
+
+| Category | Matched Keywords | Score |
+|---|---|---:|
+| `billing` | payment, card, refund | 5 |
+| `account` | login | 1 |
+
+Result: `billing` is selected as the primary category, while `account` is preserved internally as a secondary category signal.
+
+Tie-break order:
+
+1. Highest total score wins
+2. If tied, the category with more subject matches wins
+3. If still tied, category priority wins: `billing > technical > account > general`
+4. If still tied, configured rule insertion order is used as a deterministic fallback
+
+For richer diagnostics, `evaluate_category_details()` returns the selected category, per-category scores, matched keywords, and secondary categories. The public `evaluate_category()` method remains backwards-compatible and still returns only the category string.
+
 ### Priority Rules
 
 | Priority | Conditions |
 |---|---|
-| **High** | Customer type is `premium` **OR** message contains urgency keywords (`urgent`, `asap`, `blocked`, `cannot use`, ...) **OR** billing ticket with financial/legal urgency (`money`, `fraud`, `withdrawn`, `lawsuit`, `legal`, ...) |
+| **High** | Customer type is `premium` **OR** subject/message contains urgency keywords (`urgent`, `asap`, `blocked`, `cannot use`, ...) **OR** billing ticket with financial/legal urgency (`money`, `refund`, `withdrawn`, `fraud`, `lawsuit`, `legal`, ...) |
 | **Medium** | Category is `technical` or `account` |
 | **Low** | All other cases |
 
@@ -379,17 +413,33 @@ I adopted a highly modular, decoupled approach inspired by **Clean Architecture*
 
 - Case insensitivity is required ("ReFunD" must match "refund")
 - Tickets may have `None` or empty fields — all handled gracefully without crashing
-- Multiple keyword matches across categories resolve by declaration order in DB
+- Multiple category matches are resolved by weighted scoring, subject-match tie-breaks, then category priority
+- Urgency keywords are checked across both subject and message, not only message, to catch short urgent subjects
+- The default rule seed extends the case keywords slightly (for example `charge`, `withdrawn`, `fraud`, `legal`) while preserving the required mappings
 - JSON API uses `camelCase` externally; Python internals use `snake_case` (PEP 8) — mapping handled at the API boundary
 
 ### What edge cases did you handle?
 
 - ✅ `None` / empty fields default to `general` / `low`
+- ✅ Multi-category tickets use weighted category scoring instead of first-match routing
+- ✅ Score ties are deterministic (`subject` matches first, then `billing > technical > account > general`)
 - ✅ Keywords inside punctuation are matched correctly
 - ✅ False-positive substrings (`non-refundable` matching `refund`) — blocked via `\b` RegEx word boundaries
 - ✅ Invalid ticket entries in a batch are skipped with a `WARNING` log, not crashing the entire run
 - ✅ Empty ticket lists produce an empty output without errors
 - ⚠️ Negation context (`"I do NOT want a refund"`) — intentionally ignored; requires NLP
+
+### How can I test the code?
+
+For the assessment path:
+
+```bash
+pip install -r requirements.txt
+python main.py
+pytest tests/ -v
+```
+
+`python main.py` processes `data/tickets.json` and writes `data/processed_tickets.json`. The full test suite should report `42 passed`.
 
 ### What would you change first if requirements evolved?
 
@@ -409,6 +459,6 @@ The system is already scaled through 5 development phases. The next step would b
 | Phase 3 | ✅ | SQLite → PostgreSQL (dual-backend), Streamlit Admin Panel |
 | Phase 4 | ✅ | FastAPI REST API, Celery + Redis async queues |
 | Phase 5 | ✅ | Discord Webhooks, Docker Compose (5 services), multi-stage builds |
-| Phase 6 | ✅ | Central config, rate limiting, ticket history persistence, 26 tests |
+| Phase 6 | ✅ | Central config, rate limiting, ticket history persistence, expanded 42-test suite |
 | Phase 7 | ✅ | Premium UI modernization (dark mode, glassmorphism, particle animations) |
 | Phase 8 | 🔜 | NLP/AI intent classification (HuggingFace / OpenAI) |
