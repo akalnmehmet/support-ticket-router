@@ -7,3 +7,8 @@ redis
 requests
 psycopg2-binary
 slowapi
+python-dotenv
+google-generativeai
+google-genai
+huggingface_hub
+# transformers torch  # Yerel Transformers provider için — büyük (~2GB), isteğe bağlı

@@ -4,27 +4,35 @@
     "category": "billing",
     "priority": "high",
     "assignedTeam": "payments-team",
-    "reason": "Classified as billing because payment, money, card, and withdrawn matched strongest. Marked high priority because customer is premium and billing ticket contains financial urgency keywords."
+    "reason": "Classified as billing because payment, money, card, and withdrawn matched strongest. Marked high priority because customer is premium and billing ticket contains financial urgency keywords.",
+    "confidence": 1.0,
+    "aiUsed": false
   },
   {
     "id": 2,
     "category": "account",
     "priority": "medium",
     "assignedTeam": "account-support",
-    "reason": "Classified as account because password, login, account, and access matched strongest. Marked medium priority."
+    "reason": "Classified as account because password, login, account, and access matched strongest. Marked medium priority.",
+    "confidence": 1.0,
+    "aiUsed": false
   },
   {
     "id": 3,
     "category": "technical",
     "priority": "medium",
     "assignedTeam": "technical-support",
-    "reason": "Classified as technical because upload matched strongest. Marked medium priority."
+    "reason": "Classified as technical because upload matched strongest. Marked medium priority.",
+    "confidence": 1.0,
+    "aiUsed": false
   },
   {
     "id": 4,
     "category": "billing",
     "priority": "high",
     "assignedTeam": "payments-team",
-    "reason": "Classified as billing because refund, and invoice matched strongest. Marked high priority because customer is premium and billing ticket contains financial urgency keywords."
+    "reason": "Classified as billing because refund, and invoice matched strongest. Marked high priority because customer is premium and billing ticket contains financial urgency keywords.",
+    "confidence": 1.0,
+    "aiUsed": false
   }
 ]

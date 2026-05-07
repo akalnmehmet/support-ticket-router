@@ -1,10 +1,10 @@
 # Support Ticket Router 🎫
 
-> An intelligent, production-grade engine that automatically classifies, prioritizes, and routes customer support tickets using rule-based logic and a full microservices architecture.
+> An intelligent, production-grade engine that automatically classifies, prioritizes, and routes customer support tickets — powered by a **Hybrid AI Engine** (Google Gemini + RegEx fallback) with a full microservices architecture.
 
 Built as part of the **Software Development Internship** technical assessment at **Uruba Software**.
 
-**Assessment scope:** the core submission is the CLI + rule engine (`python main.py`). FastAPI, Celery, Redis, PostgreSQL, Streamlit, Docker, and webhooks are optional extensions added to show how the same core logic can evolve into a more production-like service.
+**Assessment scope:** the core submission is the CLI + rule engine (`python main.py`). FastAPI, Celery, Redis, PostgreSQL, Streamlit, Docker, webhooks, and AI integration are optional extensions demonstrating how the same core logic evolves into a production-grade service.
 
 **🌐 Live Demo:** [https://support-ticket-router.streamlit.app/](https://support-ticket-router.streamlit.app/)
 
@@ -14,6 +14,7 @@ Built as part of the **Software Development Internship** technical assessment at
 
 - [Features](#features)
 - [Architecture Overview](#architecture-overview)
+- [AI Classification Engine](#ai-classification-engine)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
@@ -35,19 +36,21 @@ Built as part of the **Software Development Internship** technical assessment at
 
 | Feature | Details |
 |---|---|
+| ✨ **Hybrid AI Engine** | Google Gemini 2.5 Flash Lite as primary classifier; automatic RegEx fallback when confidence is low or AI is unavailable |
+| 🔌 **Multi-Provider AI** | Supports Gemini, HuggingFace API, local Transformers (offline), and Ollama — switchable via a single `.env` variable |
+| 📊 **Confidence Scoring** | Every result includes a `confidence` score (0.0–1.0) and `aiUsed` flag |
 | 🤖 **Scored Classification** | Categorizes tickets into `billing`, `account`, `technical`, or `general` using weighted keyword scoring |
 | 🔥 **Priority Detection** | Assigns `high`, `medium`, or `low` based on customer tier and urgency keywords |
-| 💬 **Dynamic Reasoning** | Explains primary category keywords, secondary category signals, and priority decisions |
-| 🌐 **REST API (FastAPI)** | Async HTTP API with Swagger UI, Pydantic validation and rate limiting |
+| 💬 **Dynamic Reasoning** | Explains classification decisions in natural language (AI) or rule-based detail (RegEx) |
+| 🌐 **REST API (FastAPI)** | Async HTTP API with Swagger UI, Pydantic validation, and rate limiting |
 | 📬 **Message Queues** | Celery + Redis for non-blocking asynchronous ticket processing |
 | 🔔 **Webhook Notifications** | Sends rich Discord/Slack embeds when a ticket is assigned to a team |
 | 🗄️ **Dual-Backend DB** | PostgreSQL in Docker/production; SQLite fallback for local/Streamlit Cloud |
 | 🔒 **Secure Admin Panel** | Password-protected Streamlit dashboard for live rule management — no code changes needed |
 | 📊 **Persistent History** | Processed tickets are stored in DB and survive page reloads |
-| 🧠 **RegEx Matching + Tie-Breaking** | Word-boundary (`\b`) patterns prevent false positives; score ties resolve deterministically |
 | 🚦 **Rate Limiting** | `slowapi` protects the API endpoints (30 req/min for POST, 120/min for GET) |
 | 📋 **Structured Logging** | Python `logging` module writes to `app.log` with timestamps |
-| ✅ **42 Automated Tests** | Unit + E2E test suites covering scoring, edge cases, case tickets, and output format |
+| ✅ **72 Automated Tests** | Unit + E2E + AI test suites covering scoring, edge cases, fallback behaviour, and all 4 AI providers |
 | 🐳 **Multi-Stage Docker** | Optimized container builds; each service carries only what it needs |
 
 ---
@@ -72,9 +75,16 @@ Built as part of the **Software Development Internship** technical assessment at
                         ┌────────────▼────────────────┐
                         │      Celery Worker           │
                         │   ┌──────────────────────┐  │
-                        │   │ TicketEvaluator       │  │
-                        │   │ TeamRouter            │  │
-                        │   │ Notifier (Webhook)    │  │
+                        │   │  HybridClassifier    │  │
+                        │   │  ┌────────────────┐  │  │
+                        │   │  │  AI Provider   │  │  │  ← Gemini / HF / Ollama
+                        │   │  └───────┬────────┘  │  │
+                        │   │  confidence < 0.65?  │  │
+                        │   │  ┌────────────────┐  │  │
+                        │   │  │ TicketEvaluator│  │  │  ← RegEx fallback
+                        │   │  └────────────────┘  │  │
+                        │   │  TeamRouter           │  │
+                        │   │  Notifier (Webhook)   │  │
                         │   └──────────────────────┘  │
                         │         │            │       │
                         │   PostgreSQL      Redis      │
@@ -87,8 +97,51 @@ Built as part of the **Software Development Internship** technical assessment at
 ```
 
 **Alternative Interfaces:**
-- **Streamlit UI** (`app.py`) — Interactive dashboard with Admin Panel
+- **Streamlit UI** (`app.py`) — Interactive dashboard with AI badge, confidence bar, and Admin Panel
 - **CLI Batch Processor** (`main.py`) — Processes `data/tickets.json` directly
+
+---
+
+## AI Classification Engine
+
+The system uses a **HybridClassifier** that puts AI first and falls back to the proven RegEx engine automatically.
+
+```
+Ticket Input
+     │
+     ▼
+┌─────────────────────────────┐
+│      HybridClassifier       │
+│  ┌────────────────────────┐ │
+│  │     AI Provider        │ │  ← Gemini / HuggingFace / Transformers / Ollama
+│  └───────────┬────────────┘ │
+│     confidence >= 0.65?     │
+│              │ No           │
+│              ▼              │
+│  ┌────────────────────────┐ │
+│  │   RegEx Engine         │ │  ← TicketEvaluator (unchanged, deterministic)
+│  └────────────────────────┘ │
+└─────────────────────────────┘
+     │
+     ▼
+ProcessedTicket { category, priority, assignedTeam, reason, confidence, aiUsed }
+```
+
+### Supported AI Providers
+
+| Provider | Setup | Internet | Speed | Set in `.env` |
+|---|---|---|---|---|
+| **Google Gemini 2.5 Flash Lite** ⭐ | `pip install google-genai` | Required | Fast | `AI_PROVIDER=gemini` |
+| **HuggingFace Inference API** | `pip install huggingface_hub` | Required | Medium | `AI_PROVIDER=huggingface` |
+| **Local Transformers (offline)** | `pip install transformers torch` | First run only | Slow (CPU) | `AI_PROVIDER=transformers` |
+| **Ollama (local LLM)** | [ollama.com](https://ollama.com) + `ollama pull phi4-mini` | No | Medium | `AI_PROVIDER=ollama` |
+| **RegEx only** | — | No | Instant | `AI_PROVIDER=none` |
+
+Switch providers without touching any code — just change `AI_PROVIDER` in `.env`.
+
+### Confidence Threshold
+
+When AI confidence drops below `AI_CONFIDENCE_THRESHOLD` (default: `0.65`), the system silently falls back to the RegEx engine. The result is identical from the caller's perspective — only `aiUsed: false` indicates which path ran.
 
 ---
 
@@ -96,6 +149,7 @@ Built as part of the **Software Development Internship** technical assessment at
 
 | Layer | Technology |
 |---|---|
+| **AI Classification** | Google Gemini 2.5 Flash Lite (primary), HuggingFace, Transformers, Ollama |
 | **API Framework** | FastAPI + Uvicorn |
 | **Async Processing** | Celery + Redis |
 | **Database (Prod)** | PostgreSQL 16 |
@@ -104,7 +158,7 @@ Built as part of the **Software Development Internship** technical assessment at
 | **Config** | `config/settings.py` + `.env` |
 | **Rate Limiting** | slowapi |
 | **Notifications** | Discord/Slack Webhooks via `requests` |
-| **Testing** | pytest (42 tests: Unit + E2E) |
+| **Testing** | pytest (72 tests: Unit + E2E + AI) |
 | **Containerization** | Docker + Docker Compose (5 services) |
 
 ---
@@ -115,9 +169,9 @@ Built as part of the **Software Development Internship** technical assessment at
 support-ticket-router/
 │
 ├── api.py                    # FastAPI REST API entry point
-├── worker.py                 # Celery async background worker
+├── worker.py                 # Celery async background worker (AI-enabled)
 ├── main.py                   # CLI batch processor (main assessment deliverable)
-├── app.py                    # Streamlit UI + Admin Panel
+├── app.py                    # Streamlit UI + Admin Panel + AI badge
 │
 ├── config/
 │   └── settings.py           # ✨ Central config — all env vars in one place
@@ -128,14 +182,22 @@ support-ticket-router/
 ├── engine/
 │   ├── evaluator.py          # Scored classification engine (RegEx + tie-break rules)
 │   ├── router.py             # Team routing engine
-│   └── notifier.py           # Discord/Slack webhook dispatcher
+│   ├── notifier.py           # Discord/Slack webhook dispatcher
+│   ├── ai_classifier.py      # ✨ HybridClassifier (AI-first + RegEx fallback)
+│   └── providers/            # ✨ Pluggable AI provider modules
+│       ├── __init__.py       #    BaseAIProvider abstract class
+│       ├── gemini_provider.py
+│       ├── huggingface_provider.py
+│       ├── transformers_provider.py
+│       └── ollama_provider.py
 │
 ├── models/
 │   └── ticket.py             # Typed dataclasses (Ticket, ProcessedTicket)
 │
 ├── tests/
-│   ├── test_evaluator.py     # 27 unit tests
-│   └── test_e2e.py           # 15 E2E pipeline tests (3 test classes)
+│   ├── test_evaluator.py     # 27 unit tests (RegEx engine)
+│   ├── test_e2e.py           # 15 E2E pipeline tests
+│   └── test_ai_classifier.py # ✨ 30 AI tests (HybridClassifier + all providers)
 │
 ├── data/
 │   └── tickets.json          # Sample input (assessment data)
@@ -161,32 +223,53 @@ support-ticket-router/
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (recommended)
 - OR Python 3.11+ for local development
+- A free [Google AI Studio](https://aistudio.google.com) API key (optional — system works without it)
 
 ### Configuration (.env)
 
 ```bash
-# Copy the template
 cp .env.example .env
 ```
 
-The `.env` file contains:
+> [!IMPORTANT]
+> **Zero-config for local use.** The `.env` file works as-is for local and Streamlit Cloud runs.
+> Docker Compose automatically overrides `DATABASE_URL` and `REDIS_URL` for its own containers — you never need to edit these manually.
+
+Key settings in `.env`:
 
 ```env
-# PostgreSQL
+# PostgreSQL credentials (Docker uses these to create the DB)
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=secret123
 POSTGRES_DB=ticket_db
-DATABASE_URL=postgresql://admin:secret123@db:5432/ticket_db
 
-# Redis
-REDIS_URL=redis://redis:6379/0
+# Leave empty — SQLite is used locally; Docker sets this automatically
+DATABASE_URL=
 
-# Admin Panel (change before production!)
-ADMIN_PASSWORD=admin123
+# Leave as localhost — Docker overrides to redis://redis:6379/0 internally
+REDIS_URL=redis://localhost:6379/0
 
-# Webhooks (optional)
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+# ── AI Configuration ──────────────────────────────────
+# Options: gemini | huggingface | transformers | ollama | none
+AI_PROVIDER=gemini
+
+# Google Gemini (free at aistudio.google.com)
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash-lite
+
+# Confidence threshold — below this, RegEx engine takes over
+AI_CONFIDENCE_THRESHOLD=0.65
 ```
+
+**Environment summary — same `.env` file works everywhere:**
+
+| Environment | Database | Redis | Command |
+|---|---|---|---|
+| **Local CLI** | SQLite (auto) | Not needed | `python main.py` |
+| **Local Streamlit** | SQLite (auto) | Not needed | `streamlit run app.py` |
+| **Local Tests** | SQLite (temp) | Not needed | `pytest tests/` |
+| **Docker** | PostgreSQL (auto) | Docker Redis (auto) | `docker compose up` |
+| **Streamlit Cloud** | SQLite (auto) | Not needed | Deployed automatically |
 
 > **Security Note:** `.env` is git-ignored. Never commit real secrets to source control.
 
@@ -203,20 +286,31 @@ python main.py
 
 Output is printed to console and saved to `data/processed_tickets.json`.
 
+With AI enabled, each ticket shows:
+```json
+{
+  "id": 1,
+  "category": "billing",
+  "priority": "high",
+  "assignedTeam": "payments-team",
+  "reason": "The ticket is about a failed payment with money withdrawn, indicating a billing issue. Premium customer elevates priority to high.",
+  "confidence": 0.95,
+  "aiUsed": true
+}
+```
+
 ---
 
 ### Run with Docker (Full Stack)
-
-Optional full-stack run. Starts **PostgreSQL**, **Redis**, **FastAPI**, **Celery Worker**, and **CLI** simultaneously:
 
 ```bash
 docker compose up --build
 ```
 
-Services will start in dependency order (DB and Redis first, then API and Worker). 
+Services start in dependency order (DB and Redis first, then API and Worker).
 
 > [!NOTE]
-> The `ticket-router-cli` service is a **run-once job**. It will process the sample tickets, print the results to the logs, and then exit. You can see its output with `docker compose logs ticket-router-cli`.
+> The `ticket-router-cli` service is a **run-once job**. See its output with `docker compose logs ticket-router-cli`.
 
 ---
 
@@ -228,10 +322,15 @@ streamlit run app.py
 
 Or visit the live hosted version: 👉 **[https://support-ticket-router.streamlit.app/](https://support-ticket-router.streamlit.app/)**
 
+The UI shows:
+- **`✨ AI · gemini-2.5-flash-lite`** badge when Gemini classifies the ticket
+- **Confidence bar** showing the AI's certainty percentage
+- **`⚙️ RegEx Engine`** badge when the fallback is used
+
 **Admin Panel Access:**
 1. Open left sidebar → click **Admin Panel**
-2. Enter password: `admin123` (or your custom `ADMIN_PASSWORD`)
-3. Add / edit / delete categories and keywords — changes take effect immediately, no restart needed
+2. Enter password: `admin123`
+3. Add / edit / delete categories and keywords — changes take effect immediately
 
 ---
 
@@ -241,12 +340,13 @@ Or visit the live hosted version: 👉 **[https://support-ticket-router.streamli
 pytest tests/ -v
 ```
 
-**Expected output:** `42 passed`
+**Expected output:** `72 passed`
 
 | Test Suite | Count | Coverage |
 |---|---|---|
-| `test_evaluator.py` | 27 | Category scoring, tie-breaks, detail analysis, reason generation, priority rules, edge cases |
+| `test_evaluator.py` | 27 | Category scoring, tie-breaks, detail analysis, reason generation, priority rules |
 | `test_e2e.py` | 15 | All 4 case tickets, empty list, None fields, malformed data, output format |
+| `test_ai_classifier.py` | 30 | HybridClassifier (AI path, fallback, threshold), Ollama provider, Transformers provider, ProcessedTicket fields, BaseAIProvider contract |
 
 ---
 
@@ -258,7 +358,7 @@ Interactive docs: **[http://localhost:8000/docs](http://localhost:8000/docs)** (
 
 ### `POST /api/v1/process-ticket`
 
-Enqueues a ticket for async classification. Returns a `task_id` immediately.
+Enqueues a ticket for async AI classification. Returns a `task_id` immediately.
 
 **Rate Limit:** 30 requests/minute per IP
 
@@ -290,15 +390,6 @@ Polls the status and result of a previously submitted ticket.
 
 **Rate Limit:** 120 requests/minute per IP
 
-**Response (while processing):**
-```json
-{
-  "task_id": "8b52df3e-...",
-  "status": "PENDING",
-  "result": null
-}
-```
-
 **Response (when complete):**
 ```json
 {
@@ -309,7 +400,9 @@ Polls the status and result of a previously submitted ticket.
     "category": "billing",
     "priority": "high",
     "assignedTeam": "payments-team",
-    "reason": "Classified as billing because refund and payment matched strongest. Marked high priority because customer is premium and billing ticket contains financial urgency keywords."
+    "reason": "The customer is reporting a double charge, which is a billing issue. The customer is premium and the issue involves potential fraud, making the priority high.",
+    "confidence": 0.95,
+    "aiUsed": true
   }
 }
 ```
@@ -333,7 +426,7 @@ Simple liveness probe.
 | `db` | `postgres:16-alpine` | 5432 | PostgreSQL database (rules + history) |
 | `redis` | `redis:alpine` | 6379 | Celery broker & result backend |
 | `ticket-router-api` | Local build | **8000** | FastAPI REST API |
-| `celery-worker` | Local build | — | Background ticket processor |
+| `celery-worker` | Local build | — | Background ticket processor (AI-enabled) |
 | `ticket-router-cli` | Local build | — | Batch JSON processor |
 
 All services use `healthcheck` to ensure correct startup ordering.
@@ -352,43 +445,25 @@ PostgreSQL data is persisted via a named Docker Volume (`postgres_data`).
 | `technical` | crash, bug, error, broken, loading, upload, not working | `technical-support` |
 | `general` | *(no keyword match)* | `general-support` |
 
-### Category Scoring
+### Category Scoring (RegEx Engine)
 
-When a ticket contains signals from multiple categories, the engine does **not** simply return the first matching rule. `TicketEvaluator` scores every category and chooses the strongest primary category.
+When the RegEx engine runs (AI unavailable or low confidence), it uses weighted scoring:
 
 | Match Location | Score |
 |---|---:|
 | Keyword match in `subject` | `+2` |
 | Keyword match in `message` | `+1` |
 
-Scores are cumulative. For example:
-
-```text
-Subject: Payment card issue
-Message: I need a refund and cannot login.
-```
-
-| Category | Matched Keywords | Score |
-|---|---|---:|
-| `billing` | payment, card, refund | 5 |
-| `account` | login | 1 |
-
-Result: `billing` is selected as the primary category, while `account` is preserved internally as a secondary category signal.
-
 Tie-break order:
-
 1. Highest total score wins
-2. If tied, the category with more subject matches wins
-3. If still tied, category priority wins: `billing > technical > account > general`
-4. If still tied, configured rule insertion order is used as a deterministic fallback
-
-For richer diagnostics, `evaluate_category_details()` returns the selected category, per-category scores, matched keywords, and secondary categories. The public `evaluate_category()` method remains backwards-compatible and still returns only the category string.
+2. If tied, more subject matches wins
+3. If still tied: `billing > technical > account > general`
 
 ### Priority Rules
 
 | Priority | Conditions |
 |---|---|
-| **High** | Customer type is `premium` **OR** subject/message contains urgency keywords (`urgent`, `asap`, `blocked`, `cannot use`, ...) **OR** billing ticket with financial/legal urgency (`money`, `refund`, `withdrawn`, `fraud`, `lawsuit`, `legal`, ...) |
+| **High** | Customer type is `premium` **OR** urgency keywords (`urgent`, `asap`, `blocked`, ...) **OR** billing ticket with financial terms (`money`, `refund`, `withdrawn`, `fraud`, ...) |
 | **Medium** | Category is `technical` or `account` |
 | **Low** | All other cases |
 
@@ -398,55 +473,64 @@ For richer diagnostics, `evaluate_category_details()` returns the selected categ
 
 ## Assessment Q&A
 
+### Why implement AI, Docker, REST API, and Celery if they weren't requested?
+
+The email stated: *"The goal of this task is not only to assess technical ability, but also to better understand your problem-solving approach, code structure, and decision-making process."* 
+
+While a simple `if/else` script satisfies the baseline requirements, it doesn't reflect how real-world software is built. I wanted to demonstrate my ability to design **production-grade, scalable architectures**:
+
+1. **Hybrid AI Engine:** Shows how to integrate LLMs (Gemini/HuggingFace) gracefully while maintaining a deterministic fallback (RegEx) for reliability and safety.
+2. **FastAPI & Celery:** Demonstrates asynchronous processing. In the real world, AI processing takes seconds; blocking a REST API for it is poor design. Celery decouples the workload.
+3. **Docker & PostgreSQL:** Shows DevOps awareness. The app is ready to deploy anywhere via containers.
+4. **Clean Architecture:** By decoupling the core engine (`HybridClassifier`) from the entry points, the exact same logic runs seamlessly in a CLI batch job, a REST API worker, and a Streamlit UI.
+
 ### How did you break down the problem?
 
 I adopted a highly modular, decoupled approach inspired by **Clean Architecture** principles:
 
-1. **Data Models** (`models/ticket.py`) — Strictly typed `dataclass` schemas
-2. **Config** (`config/settings.py`) — Single source of truth for all env variables
-3. **Database Layer** (`database/db.py`) — Dual-backend (PostgreSQL/SQLite) with automatic fallback; rules injected at startup (Dependency Injection)
-4. **Core Engines** (`engine/`) — Stateless, testable classes for classification, routing, and notifications
-5. **Async Layer** (`worker.py`, `api.py`) — Celery + Redis decouple request intake from processing
-6. **Interfaces** (`app.py`, `main.py`) — Streamlit UI with Admin Panel and CLI batch processor
+1. **Data Models** (`models/ticket.py`) — Strictly typed `dataclass` schemas with AI metadata fields (`confidence`, `ai_used`)
+2. **Config** (`config/settings.py`) — Single source of truth for all env variables including AI provider settings
+3. **Database Layer** (`database/db.py`) — Dual-backend (PostgreSQL/SQLite) with automatic fallback
+4. **Core Engines** (`engine/`) — Stateless, testable classes; `HybridClassifier` wraps the existing `TicketEvaluator` without modifying it
+5. **AI Provider Abstraction** (`engine/providers/`) — `BaseAIProvider` interface enables adding new AI backends without touching any existing code
+6. **Async Layer** (`worker.py`, `api.py`) — Celery + Redis decouple request intake from AI processing
+7. **Interfaces** (`app.py`, `main.py`) — All three entry points (CLI, Streamlit, REST API) use the same `HybridClassifier`
 
 ### What assumptions did you make?
 
 - Case insensitivity is required ("ReFunD" must match "refund")
-- Tickets may have `None` or empty fields — all handled gracefully without crashing
-- Multiple category matches are resolved by weighted scoring, subject-match tie-breaks, then category priority
-- Urgency keywords are checked across both subject and message, not only message, to catch short urgent subjects
-- The default rule seed extends the case keywords slightly (for example `charge`, `withdrawn`, `fraud`, `legal`) while preserving the required mappings
-- JSON API uses `camelCase` externally; Python internals use `snake_case` (PEP 8) — mapping handled at the API boundary
+- Tickets may have `None` or empty fields — all handled gracefully
+- AI results with confidence below threshold should silently fall back (no error to caller)
+- API key security: `.env` is git-ignored; API keys never reach source control
+- JSON API uses `camelCase` externally; Python internals use `snake_case` (PEP 8)
 
 ### What edge cases did you handle?
 
 - ✅ `None` / empty fields default to `general` / `low`
-- ✅ Multi-category tickets use weighted category scoring instead of first-match routing
-- ✅ Score ties are deterministic (`subject` matches first, then `billing > technical > account > general`)
-- ✅ Keywords inside punctuation are matched correctly
-- ✅ False-positive substrings (`non-refundable` matching `refund`) — blocked via `\b` RegEx word boundaries
-- ✅ Invalid ticket entries in a batch are skipped with a `WARNING` log, not crashing the entire run
+- ✅ Multi-category tickets use weighted scoring instead of first-match routing
+- ✅ Score ties are deterministic
+- ✅ False-positive substrings (`non-refundable` matching `refund`) — blocked via `\b` word boundaries
+- ✅ AI provider down / rate-limited → silent RegEx fallback, no crash
+- ✅ AI returns low-confidence result → RegEx takes over transparently
+- ✅ `google-genai` package missing → ImportError caught, RegEx used
+- ✅ Invalid ticket entries in a batch are skipped with a `WARNING` log
 - ✅ Empty ticket lists produce an empty output without errors
-- ⚠️ Negation context (`"I do NOT want a refund"`) — intentionally ignored; requires NLP
+- ⚠️ Negation context ("I do NOT want a refund") — not handled; requires NLP
 
 ### How can I test the code?
 
-For the assessment path:
-
 ```bash
 pip install -r requirements.txt
-python main.py
-pytest tests/ -v
+python main.py        # CLI with AI (or RegEx if AI_PROVIDER=none)
+pytest tests/ -v      # Should report 72 passed
+streamlit run app.py  # UI with AI badge
 ```
-
-`python main.py` processes `data/tickets.json` and writes `data/processed_tickets.json`. The full test suite should report `42 passed`.
 
 ### What would you change first if requirements evolved?
 
-The system is already scaled through 5 development phases. The next step would be:
-
-1. **NLP Classification** — Replace RegEx with HuggingFace transformers or OpenAI API for semantic intent detection
-2. **Multi-Tenant Auth** — Replace the single admin password with OAuth2/JWT for multi-user management
+1. **Fine-tuned model** — Replace zero-shot with a domain-fine-tuned model on historical ticket data for higher confidence scores
+2. **Streaming responses** — Add SSE/WebSocket support to the FastAPI layer for real-time classification progress
+3. **Multi-Tenant Auth** — Replace the single admin password with OAuth2/JWT for multi-user management
 
 ---
 
@@ -459,6 +543,7 @@ The system is already scaled through 5 development phases. The next step would b
 | Phase 3 | ✅ | SQLite → PostgreSQL (dual-backend), Streamlit Admin Panel |
 | Phase 4 | ✅ | FastAPI REST API, Celery + Redis async queues |
 | Phase 5 | ✅ | Discord Webhooks, Docker Compose (5 services), multi-stage builds |
-| Phase 6 | ✅ | Central config, rate limiting, ticket history persistence, expanded 42-test suite |
+| Phase 6 | ✅ | Central config, rate limiting, ticket history persistence, 42-test suite |
 | Phase 7 | ✅ | Premium UI modernization (dark mode, glassmorphism, particle animations) |
-| Phase 8 | 🔜 | NLP/AI intent classification (HuggingFace / OpenAI) |
+| Phase 8 | ✅ | **Hybrid AI Engine** — Gemini, HuggingFace, Transformers, Ollama; 72-test suite |
+| Phase 9 | 🔜 | Fine-tuned domain model + streaming API responses |

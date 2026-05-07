@@ -16,6 +16,7 @@ Bu dokuman, projedeki README'nin anlattigi urun ve calistirma bilgisini daha tek
 - [6. Calisma Modlari](#6-calisma-modlari)
 - [7. Veri Modeli](#7-veri-modeli)
 - [8. Siniflandirma ve Onceliklendirme Motoru](#8-siniflandirma-ve-onceliklendirme-motoru)
+- [8b. Yapay Zeka Siniflandirma Katmani](#8b-yapay-zeka-siniflandirma-katmani)
 - [9. Veritabani Katmani](#9-veritabani-katmani)
 - [10. REST API Katmani](#10-rest-api-katmani)
 - [11. Celery Worker ve Kuyruk Mimarisi](#11-celery-worker-ve-kuyruk-mimarisi)
@@ -41,14 +42,17 @@ Support Ticket Router, gelen destek taleplerini otomatik olarak isleyen bir dest
 | `category` | Talebin konusu: `billing`, `account`, `technical` veya `general` |
 | `priority` | Is onceligi: `high`, `medium`, `low` |
 | `assignedTeam` | Talebi devralacak destek ekibi |
+| `confidence` | AI'in siniflandirma guven skoru (0.0–1.0) |
+| `aiUsed` | Siniflandirmada AI mi RegEx mi kullanildi |
 
 Proje yalnizca tek bir script olarak degil, farkli kullanim senaryolarini destekleyen cok katmanli bir uygulama olarak tasarlanmistir:
 
+- **Hibrit AI motoru** — Gemini, HuggingFace, Transformers, Ollama destegi; dusuk guven veya hata durumunda RegEx'e otomatik fallback
 - CLI ile batch JSON isleme
 - FastAPI ile HTTP uzerinden asenkron ticket kabul etme
 - Celery + Redis ile arka planda isleme
 - PostgreSQL veya SQLite ile kural ve gecmis saklama
-- Streamlit ile son kullanici paneli ve admin kural yonetimi
+- Streamlit ile son kullanici paneli, AI badge ve admin kural yonetimi
 - Discord/Slack uyumlu webhook bildirimleri
 - Docker Compose ile cok servisli calistirma
 
@@ -78,6 +82,10 @@ Proje yalnizca tek bir script olarak degil, farkli kullanim senaryolarini destek
 | Katman | Teknoloji |
 |---|---|
 | Dil | Python |
+| **AI (Birincil)** | **Google Gemini 2.5 Flash Lite** (`google-genai`) |
+| **AI (Yedek 1)** | **HuggingFace Inference API** (`huggingface_hub`) |
+| **AI (Yedek 2)** | **Yerel Transformers** (`transformers`, `torch`) |
+| **AI (Yedek 3)** | **Ollama** (yerel LLM, ayri kurulum) |
 | API | FastAPI, Uvicorn |
 | Veri dogrulama | Pydantic |
 | Arka plan isleri | Celery |
@@ -88,35 +96,38 @@ Proje yalnizca tek bir script olarak degil, farkli kullanim senaryolarini destek
 | Bildirim | `requests` ile webhook POST |
 | Konfigurasyon | `.env`, `config/settings.py` |
 | Rate limiting | SlowAPI |
-| Test | pytest, unittest, tempfile, mock patch |
+| Test | pytest, unittest.mock (72 test) |
 | Konteyner | Docker, Docker Compose |
 
 ---
 
 ## 4. Mimari Genel Bakis
 
-Sistemin cekirdegi, arayuzlerden bagimsiz olan kural tabanli is motorudur. CLI, API worker ve Streamlit UI ayni temel modulleri kullanir:
+Sistemin cekirdegi artik `HybridClassifier` uzerinden calisir. CLI, API worker ve Streamlit UI ayni siniflandirici zincirini kullanir:
 
 ```text
 Input Ticket
     |
     v
-Ticket dataclass
+┌─────────────────────────────┐
+│      HybridClassifier       │
+│  ┌────────────────────────┐ │
+│  │     AI Provider        │ │  <- Gemini / HuggingFace / Transformers / Ollama
+│  └───────────┬────────────┘ │
+│  confidence >= threshold?   │
+│              | Hayir        │
+│              v              │
+│  ┌────────────────────────┐ │
+│  │   TicketEvaluator      │ │  <- RegEx motoru (degismez)
+│  └────────────────────────┘ │
+│       TeamRouter            │
+└─────────────────────────────┘
     |
     v
-TicketEvaluator
-    |-- category
-    |-- priority
-    |-- reason
-    |
-    v
-TeamRouter
-    |
-    v
-Processed Ticket
+ProcessedTicket { category, priority, assignedTeam, reason, confidence, aiUsed }
 ```
 
-Docker/API senaryosunda asenkron akisi su sekildedir:
+Docker/API senaryosunda asenkron akis:
 
 ```text
 Client
@@ -132,11 +143,12 @@ Redis Broker
   v
 Celery Worker
   |
-  | load DB rules
-  | evaluate ticket
-  | route team
-  | send webhook
-  | save history
+  | HybridClassifier.process(ticket)
+  |   -> AI Provider (Gemini vs.)
+  |   -> fallback: TicketEvaluator
+  | TeamRouter.route_ticket()
+  | send_webhook()
+  | save_processed_ticket()
   v
 Redis Result Backend + Database
   ^
@@ -147,10 +159,10 @@ Client polls result
 
 Bu ayrim sayesinde:
 
-- API hizli cevap verir ve uzun sureli islemi kuyruga devreder.
+- API hizli cevap verir ve uzun sureli AI islemini kuyruga devreder.
 - Worker sayisi arttirilarak isleme kapasitesi yatay olarak buyutulebilir.
-- Kurallar veritabanindan geldigi icin kod degisikligi olmadan davranis degistirilebilir.
-- CLI, UI ve API ayni is mantigini kullandigi icin tutarlilik korunur.
+- AI provider `.env` degiskeni ile kod degisikligi olmadan degistirilebilir.
+- CLI, UI ve API ayni `HybridClassifier` kullandigi icin tutarlilik korunur.
 
 ---
 
@@ -159,10 +171,10 @@ Bu ayrim sayesinde:
 ```text
 support_ticket_router/
 |
-|-- api.py
-|-- worker.py
-|-- main.py
-|-- app.py
+|-- api.py                      # FastAPI REST API
+|-- worker.py                   # Celery worker (HybridClassifier kullaniyor)
+|-- main.py                     # CLI batch processor
+|-- app.py                      # Streamlit UI + AI badge
 |-- Dockerfile
 |-- docker-compose.yml
 |-- requirements.txt
@@ -170,22 +182,30 @@ support_ticket_router/
 |-- TECHNICAL_DOCUMENTATION.md
 |
 |-- config/
-|   |-- settings.py
+|   |-- settings.py             # AI_PROVIDER, API key'ler dahil tum env vars
 |
 |-- database/
 |   |-- db.py
 |
 |-- engine/
-|   |-- evaluator.py
+|   |-- evaluator.py            # RegEx motoru (degismez)
 |   |-- router.py
 |   |-- notifier.py
+|   |-- ai_classifier.py        # [YENİ] HybridClassifier
+|   |-- providers/              # [YENİ] AI provider modulleri
+|       |-- __init__.py         #   BaseAIProvider soyut sinifi
+|       |-- gemini_provider.py  #   Google Gemini
+|       |-- huggingface_provider.py
+|       |-- transformers_provider.py
+|       |-- ollama_provider.py
 |
 |-- models/
-|   |-- ticket.py
+|   |-- ticket.py               # confidence + aiUsed alanlari eklendi
 |
 |-- tests/
-|   |-- test_evaluator.py
-|   |-- test_e2e.py
+|   |-- test_evaluator.py       # 27 unit test
+|   |-- test_e2e.py             # 15 E2E test
+|   |-- test_ai_classifier.py   # [YENİ] 30 AI testi
 |
 |-- data/
 |   |-- tickets.json
@@ -334,9 +354,11 @@ class ProcessedTicket:
     priority: str
     assigned_team: str
     reason: str
+    confidence: float = 1.0   # AI guven skoru; RegEx icin 1.0 (deterministik)
+    ai_used: bool = False      # AI mi yoksa RegEx mi kullanildi
 ```
 
-Dis cikti formati:
+Dis cikti formati (AI aktif):
 
 ```json
 {
@@ -344,7 +366,23 @@ Dis cikti formati:
   "category": "billing",
   "priority": "high",
   "assignedTeam": "payments-team",
-  "reason": "Classified as billing and marked high priority because customer is premium and billing ticket contains financial urgency keywords."
+  "reason": "The ticket mentions a failed payment and withdrawn money, indicating a billing issue.",
+  "confidence": 0.95,
+  "aiUsed": true
+}
+```
+
+Dis cikti formati (RegEx fallback):
+
+```json
+{
+  "id": 1,
+  "category": "billing",
+  "priority": "high",
+  "assignedTeam": "payments-team",
+  "reason": "Classified as billing because payment and money matched strongest. Marked high priority because customer is premium.",
+  "confidence": 1.0,
+  "aiUsed": false
 }
 ```
 
@@ -497,7 +535,74 @@ Classified as billing and marked high priority because customer is premium and b
 
 ---
 
-## 9. Veritabani Katmani
+## 8b. Yapay Zeka Siniflandirma Katmani
+
+### 8b.1 HybridClassifier
+
+`engine/ai_classifier.py` icindeki `HybridClassifier` sinifi, AI'yi birincil siniflandirici olarak kullanir; dusuk guven veya hata durumunda mevcut `TicketEvaluator`'e devir yapar.
+
+```python
+class HybridClassifier:
+    def __init__(self, evaluator, router, ai_provider=None,
+                 confidence_threshold=0.65):
+        ...
+
+    def process(self, ticket) -> ProcessedTicket:
+        # 1. AI provider varsa dene
+        # 2. confidence >= threshold -> AI sonucu kullan (aiUsed=True)
+        # 3. confidence < threshold veya hata -> RegEx fallback (aiUsed=False)
+```
+
+**Temel prensipler:**
+- `TicketEvaluator` ve `TeamRouter` degistirilmez; `HybridClassifier` bunlarin ustune yapi kurar.
+- `ai_provider=None` durumunda sistem eski davranisiyla tamamen ayni calisir.
+- Tum AI hatalari (timeout, rate limit, gecersiz JSON) sessizce yakalanir; caller hic etkilenmez.
+
+### 8b.2 BaseAIProvider Abstraction
+
+`engine/providers/__init__.py`'daki soyut sinif, yeni provider eklemeyi standartlastirir:
+
+```python
+class BaseAIProvider(ABC):
+    @abstractmethod
+    def classify(self, ticket: Ticket) -> dict:
+        # Donmesi gereken: {category, priority, reason, confidence}
+        ...
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        ...
+```
+
+### 8b.3 Provider Karsilastirmasi
+
+| Provider | Paket | Internet | Hiz | `.env` Degeri |
+|---|---|---|---|---|
+| **Gemini 2.5 Flash Lite** | `google-genai` | Gerekli | Hizli | `gemini` |
+| **HuggingFace API** | `huggingface_hub` | Gerekli | Orta | `huggingface` |
+| **Yerel Transformers** | `transformers torch` | Yalnizca indirme | Yavas (CPU) | `transformers` |
+| **Ollama** | Ayri kurulum | Hayir | Orta | `ollama` |
+| **RegEx Only** | Yok | Hayir | Anlik | `none` |
+
+### 8b.4 Guven Esigi
+
+`AI_CONFIDENCE_THRESHOLD` (varsayilan `0.65`) altinda kalan AI sonuclari kabul edilmez ve RegEx motoru devreye girer. Bu degisken `.env` uzerinden ayarlanabilir.
+
+### 8b.5 Sistem Prompt (Gemini)
+
+Gemini provider'i, modeli JSON ciktisina zorlamak icin yapilandirilmis bir sistem promptu kullanir:
+
+```
+You are a customer support ticket classifier.
+Output ONLY valid JSON: {category, priority, reason, confidence}
+billing: payment, refund, invoice...
+account: login, password, access...
+technical: crash, bug, error...
+```
+
+---
+
+
 
 Veritabani islemleri `database/db.py` dosyasinda toplanmistir.
 
@@ -716,31 +821,41 @@ celery_app = Celery(
 
 ### 11.1 Worker Engine Cache
 
-Worker, evaluator ve router nesnelerini thread-local cache ile olusturur:
+Worker, `HybridClassifier` nesnesini (AI provider dahil) thread-local cache ile olusturur:
 
 ```python
 _thread_local = threading.local()
+
+def _get_classifier() -> HybridClassifier:
+    if not getattr(_thread_local, 'initialized', False):
+        init_db()
+        evaluator = TicketEvaluator(...)
+        router = TeamRouter(...)
+        ai_provider = _build_ai_provider()  # .env'den okur
+        _thread_local.classifier = HybridClassifier(
+            evaluator, router, ai_provider, AI_CONFIDENCE_THRESHOLD
+        )
+        _thread_local.initialized = True
+    return _thread_local.classifier
 ```
 
 Bu yaklasim:
 
-- Her task icin tekrar tekrar engine olusturma maliyetini azaltir.
+- Her task icin tekrar tekrar AI provider ve engine olusturma maliyetini azaltir.
 - Celery concurrency senaryolarinda thread bazli izolasyon saglar.
-- Kurallari worker baslangicinda/lazy init asamasinda veritabanindan yukler.
+- AI provider (Gemini connection vb.) worker baslangicinda bir kez kurulur.
 
 ### 11.2 Task Akisi
 
 `process_ticket_task(ticket_data)` su adimlari izler:
 
-1. Veritabani kurallarindan evaluator/router hazirlanir.
+1. `_get_classifier()` ile thread-local `HybridClassifier` alinir.
 2. Raw dictionary, `Ticket` dataclass'ina map edilir.
-3. Kategori hesaplanir.
-4. Oncelik hesaplanir.
-5. Takim belirlenir.
-6. Gerekce uretilir.
-7. Webhook bildirimi denenir.
-8. Sonuc history tablosuna yazilir.
-9. Sonuc Redis result backend'e task result olarak doner.
+3. `classifier.process(ticket)` cagrilir — AI veya RegEx yoluyla siniflandirilir.
+4. Sonuc `result_data` dict'ine aktarilir (`confidence` ve `aiUsed` dahil).
+5. Webhook bildirimi denenir.
+6. Sonuc history tablosuna yazilir.
+7. Sonuc Redis result backend'e task result olarak doner.
 
 Webhook ve DB history yazimi basarisiz olursa task tamamen fail edilmez; hata loglanir ve ana sonuc donmeye devam eder.
 
@@ -924,19 +1039,42 @@ Dockerfile multi-stage yapidadir:
 
 ## 15. Konfigurasyon
 
-Konfigurasyon `config/settings.py` icinde merkezi olarak okunur.
+Konfigurasyon `config/settings.py` icinde merkezi olarak okunur. Tum degiskenler `.env` dosyasindan yuklenir.
+
+### 15.1 Ortam Bagimsizligi (Zero-Config)
+
+**Ayni `.env` dosyasi tum ortamlarda calisir.** Hicbir degisken manuel olarak degistirilmez:
+
+| Ortam | Veritabani | Redis | Nasil Calisir |
+|---|---|---|---|
+| **Lokal CLI** | SQLite (otomatik) | Gerekmez | `python main.py` |
+| **Lokal Streamlit** | SQLite (otomatik) | Gerekmez | `streamlit run app.py` |
+| **Lokal Testler** | SQLite (gecici) | Gerekmez | `pytest tests/` |
+| **Docker** | PostgreSQL (otomatik) | Docker Redis (otomatik) | `docker compose up` |
+| **Streamlit Cloud** | SQLite (otomatik) | Gerekmez | Otomatik deploy |
+
+Docker Compose, her servis icin `DATABASE_URL` ve `REDIS_URL` degiskenlerini kendi `environment` blogundan **override** eder. Bu sayede `.env` her zaman lokal ayarlariyla kalir.
+
+### 15.2 Degisken Tablosu
 
 | Degisken | Varsayilan | Gorev |
 |---|---|---|
-| `DATABASE_URL` | Bos string | PostgreSQL baglanti URL'i |
+| `DATABASE_URL` | Bos (`""`) | Bos ise SQLite kullanilir; Docker PostgreSQL URL'ini inject eder |
 | `SQLITE_PATH` | `data/rules.db` | SQLite dosya yolu |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis broker/backend URL'i |
+| `REDIS_URL` | `redis://localhost:6379/0` | Lokal Redis; Docker `redis://redis:6379/0` olarak override eder |
 | `ADMIN_PASSWORD` | `admin123` | Streamlit admin parolasi |
 | `DISCORD_WEBHOOK_URL` | Bos string | Genel webhook fallback |
 | `CELERY_TASK_MAX_RETRIES` | `3` | Celery task retry sayisi |
 | `CELERY_TASK_RETRY_BACKOFF` | `true` | Retry backoff ayari |
+| `AI_PROVIDER` | `none` | `gemini` / `huggingface` / `transformers` / `ollama` / `none` |
+| `GEMINI_API_KEY` | Bos | Google Gemini API anahtari |
+| `GEMINI_MODEL` | `gemini-2.5-flash-lite` | Kullanilacak Gemini modeli |
+| `HF_API_TOKEN` | Bos | HuggingFace API token'i |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model adi |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama sunucu adresi |
+| `AI_CONFIDENCE_THRESHOLD` | `0.65` | AI guven esigi — alti RegEx'e duser |
 
-`.env.example` dosyasi production benzeri kurulum icin sablon saglar.
+`.env.example` dosyasi her kurulum icin sablon saglar.
 
 Guvenlik notu: Gercek secret degerleri `.env` icinde tutulmali ve git'e commit edilmemelidir.
 
@@ -948,54 +1086,38 @@ Testler `tests/` klasorundedir.
 
 ### 16.1 Unit Testler
 
-`tests/test_evaluator.py`, `TicketEvaluator` davranisini test eder:
-
-- Billing kategori tespiti
-- Account kategori tespiti
-- Technical kategori tespiti
-- General fallback
-- Premium musterinin high priority olmasi
-- Aciliyet kelimelerinin high priority uretmesi
-- Technical/account kategorilerinin medium priority olmasi
-- General ticket'in low priority olmasi
-- Case insensitive eslesme
-- Bos veya `None` alanlar
-- Coklu keyword eslesmesinde kategori sirasi
+`tests/test_evaluator.py`, `TicketEvaluator` davranisini 27 test ile kapsar.
 
 ### 16.2 E2E Testler
 
-`tests/test_e2e.py`, `main()` fonksiyonunu dosya tabanli pipeline olarak test eder:
+`tests/test_e2e.py`, tam pipeline'i 15 test ile kapsar (gecici SQLite DB kullanir).
 
-```text
-JSON input file -> main() -> JSON output file
-```
+### 16.3 AI Testleri
 
-Testler gecici dizin ve gecici SQLite DB kullanir. Bu sayede lokal `data/rules.db` kirletilmez.
+`tests/test_ai_classifier.py`, yapay zeka katmanini **30 test** ile kapsar:
 
-Kapsanan durumlar:
+| Test Sinifi | Kapsam |
+|---|---|
+| `TestHybridClassifierAIPath` | AI yolu: kategori, priority, reason, team routing |
+| `TestHybridClassifierFallback` | Low confidence, API hatasi, unavailable, None provider |
+| `TestHybridClassifierThreshold` | Tam esik, altinda, 0.0 ve 1.0 uc degerler |
+| `TestProcessedTicketFields` | confidence ve aiUsed alanlari |
+| `TestBaseAIProviderContract` | ABC enforce + mock interface |
+| `TestOllamaProvider` | JSON parsing, validation, integration |
+| `TestTransformersProvider` | Label mapping, priority, integration |
 
-- Assessment ornek ticket'lari
-- Tum ticket'lari birlikte isleme
-- Bos ticket listesi
-- Eksik alanlar
-- `None` subject/message
-- Premium general inquiry
-- Urgency keyword override
-- `non-refundable` false-positive regresyon testi
-- Hatali ticket objesinin atlanmasi
-- Cikti dosyasi ve zorunlu alanlar
-- Priority degerlerinin validasyonu
+Tum AI testleri **mock** kullanir — gercek API cagrisi yapilmaz, tamamen offline calisir.
 
-### 16.3 Test Calistirma
+### 16.4 Test Calistirma
 
 ```bash
 pytest tests/ -v
 ```
 
-README'ye gore beklenen sonuc:
+Beklenen sonuc:
 
 ```text
-26 passed
+72 passed
 ```
 
 ---
@@ -1099,47 +1221,73 @@ tekrar kullanilir.
 
 ## 20. Gelistirme ve Yayina Alma Notlari
 
-### 20.1 Lokal CLI
+> **Not:** Tum ortamlar ayni `.env` dosyasiyla calisir. Hicbir degisken ortama gore manuel degistirilmez.
+
+### 20.1 Lokal CLI (AI destekli)
 
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-### 20.2 Lokal API + Worker
+- Veritabani: SQLite (otomatik olusturulur)
+- AI: `.env`'deki `AI_PROVIDER` ayarina gore
+- Cikti: `data/processed_tickets.json`
 
-Redis gereklidir.
+### 20.2 Lokal Streamlit UI
+
+```bash
+streamlit run app.py
+```
+
+- Veritabani: SQLite
+- AI badge ve confidence bar gorunur
+- Admin panel: sol sidebar > Admin Panel > `admin123`
+
+### 20.3 Lokal Testler
+
+```bash
+pytest tests/ -v
+# Beklenen: 72 passed
+```
+
+- Veritabani: Gecici SQLite (temp dizin, otomatik temizlenir)
+- AI testleri: Mock kullanir, API cagrisi yapilmaz
+
+### 20.4 Lokal API + Worker (Redis gerekli)
 
 ```bash
 uvicorn api:app --reload
 celery -A worker.celery_app worker --loglevel=info
 ```
 
-### 20.3 Streamlit
+- Redis lokal kurulu olmalidir
+- `.env`'deki `REDIS_URL=redis://localhost:6379/0` kullanilir
 
-```bash
-streamlit run app.py
-```
-
-### 20.4 Docker
+### 20.5 Docker (Tam Stack)
 
 ```bash
 docker compose up --build
 ```
 
-API dokumani:
+- PostgreSQL, Redis, FastAPI, Celery Worker ve CLI otomatik baslar
+- `DATABASE_URL` ve `REDIS_URL` Docker tarafindan otomatik override edilir
+- `.env` dosyasinda hicbir degisiklik gerekmez
 
-```text
-http://localhost:8000/docs
-```
+API dokumani: `http://localhost:8000/docs`
+Healthcheck: `http://localhost:8000/health`
 
-Healthcheck:
+### 20.6 Streamlit Cloud Deploy
 
-```text
-http://localhost:8000/health
-```
+- `app.py`'yi Streamlit Cloud'a bagla
+- Secrets bolumune sadece AI anahtarini ekle:
+  ```
+  GEMINI_API_KEY = "your_key_here"
+  AI_PROVIDER = "gemini"
+  ```
+- Veritabani otomatik SQLite olarak calisir
 
-### 20.5 Ornek API Cagrisi
+### 20.7 Ornek API Cagrisi
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/process-ticket \
@@ -1165,7 +1313,8 @@ curl http://localhost:8000/api/v1/task/<task_id>
 
 | Alan | Oneri |
 |---|---|
-| NLP | Keyword yerine semantic intent classification veya LLM destekli siniflandirma |
+| Fine-tuned model | Zero-shot yerine domain'e ozel egitilmis model |
+| Streaming API | FastAPI SSE/WebSocket ile gercek zamanli siniflandirma |
 | Auth | API key, OAuth2 veya JWT tabanli kimlik dogrulama |
 | Admin | Role-based access control |
 | Rule versioning | Kural degisiklik gecmisi ve rollback |
@@ -1180,4 +1329,12 @@ curl http://localhost:8000/api/v1/task/<task_id>
 
 ## Kisa Sonuc
 
-Support Ticket Router, kucuk bir rule engine olarak baslayip production benzeri bir mikroservis yapisina genisletilmis bir projedir. En guclu yani, is mantiginin framework'lerden bagimsiz tutulmasi ve farkli arayuzlerin ayni motoru kullanmasidir. Bu yapi, bugunku keyword tabanli kurallari korurken ileride NLP/AI tabanli siniflandirmaya gecis icin de temiz bir zemin saglar.
+Support Ticket Router, kucuk bir rule engine olarak baslayip production benzeri bir mikroservis yapisina genisletilmis ve son olarak **Hibrit AI motoruyla** zenginlestirilmis bir projedir.
+
+En guclu yani, is mantiginin framework'lerden bagimsiz tutulmasi ve farkli arayuzlerin ayni `HybridClassifier` zincirini kullanmasidir:
+
+- `python main.py` → CLI, AI kullanir
+- `streamlit run app.py` → UI, AI badge + confidence bar gosterir
+- `POST /api/v1/process-ticket` → REST API, Celery worker uzerinden AI kullanir
+
+AI provider tek bir `.env` degiskeniyle (`AI_PROVIDER`) degistirilebilir; provider hata verirse veya guven esiginin altinda kalirsa sistem sessizce RegEx motoruna duser — cagiran taraf hic etkilenmez.
